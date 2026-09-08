@@ -1,0 +1,73 @@
+# McTiler v0.1. Copy to ~/.config/mctiler/config.toml, then run mctiler reload.
+# Supported TOML subset: scalar values, [bindings], [workspaces], and [[rules]].
+# Strings use double quotes; multiline strings, arrays, dotted keys, and inline
+# tables are not supported. Invalid configuration is rejected with a line number.
+inner-gap = 8
+outer-gap = 8
+
+# Requested, but currently unavailable: status explains why. This NEVER changes
+# Dock preferences or substitutes an auto-show delay for complete suppression.
+experimental-suppress-dock = true
+
+# Omit [bindings] to use all defaults. If present, it REPLACES the default table.
+# Keys are physical US keyboard positions. Modifiers: cmd, ctrl, alt, shift.
+[bindings]
+cmd-left = "focus left"
+cmd-right = "focus right"
+cmd-up = "focus up"
+cmd-down = "focus down"
+cmd-shift-left = "move left"
+cmd-shift-right = "move right"
+cmd-shift-up = "move up"
+cmd-shift-down = "move down"
+cmd-ctrl-left = "resize left 10"
+cmd-ctrl-right = "resize right 10"
+cmd-ctrl-up = "resize up 10"
+cmd-ctrl-down = "resize down 10"
+cmd-1 = "workspace 1"
+cmd-2 = "workspace 2"
+cmd-3 = "workspace 3"
+cmd-4 = "workspace 4"
+cmd-5 = "workspace 5"
+cmd-6 = "workspace 6"
+cmd-7 = "workspace 7"
+cmd-8 = "workspace 8"
+cmd-9 = "workspace 9"
+cmd-shift-1 = "send 1"
+cmd-shift-2 = "send 2"
+cmd-shift-3 = "send 3"
+cmd-shift-4 = "send 4"
+cmd-shift-5 = "send 5"
+cmd-shift-6 = "send 6"
+cmd-shift-7 = "send 7"
+cmd-shift-8 = "send 8"
+cmd-shift-9 = "send 9"
+cmd-shift-space = "floating"
+cmd-ctrl-space = "workspace-floating"
+cmd-ctrl-f = "fullscreen"
+cmd-ctrl-h = "split horizontal"
+cmd-ctrl-v = "split vertical"
+cmd-ctrl-p = "select parent"
+cmd-ctrl-c = "select child"
+cmd-ctrl-r = "reload"
+cmd-ctrl-escape = "pause"
+
+# Display IDs are UUIDs reported by `mctiler status`.
+# Multiple workspaces can prefer the same monitor; the first numbered assignment
+# is initially visible there. Switch to others with workspace commands.
+# [workspaces]
+# "1" = "DISPLAY-UUID"
+# "2" = "DISPLAY-UUID"
+
+# First matching bundle ID wins. Rules apply when a window is first discovered.
+# [[rules]]
+# bundle = "com.apple.systempreferences"
+# floating = true
+#
+# [[rules]]
+# bundle = "com.apple.Terminal"
+# workspace = "2"
+#
+# [[rules]]
+# bundle = "some.application.bundle"
+# ignore = true
