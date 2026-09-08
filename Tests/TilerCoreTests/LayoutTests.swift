@@ -9,6 +9,17 @@ final class LayoutTests {
         desktop.updateDisplays([screen]); return desktop
     }
     func add(_ desktop: Desktop, _ id: String) { desktop.addWindow(id, frame: Rect(100, 100, 400, 300)) }
+    @Test func testDefaultGapsAcrossQuadrants() {
+        let d = Desktop(); d.updateDisplays([screen])
+        for id in ["1", "2", "3", "4"] { add(d, id) }
+        let frames = d.layout(d.current!, on: screen)
+        #expect(Configuration.defaults.innerGap == 12)
+        #expect(frames["2"]!.x - frames["1"]!.maxX == 12)
+        #expect(frames["3"]!.y - frames["1"]!.maxY == 12)
+        #expect(frames["1"]!.x == 8)
+        #expect(frames["4"]!.maxX == screen.usable.maxX - 8)
+        #expect(frames["4"]!.maxY == screen.usable.maxY - 8)
+    }
     @Test func testAutomaticQuadrantsAndFifthWindow() {
         let d = desktop(); add(d, "1")
         #expect(d.layout(d.current!, on: screen)["1"] == screen.usable)

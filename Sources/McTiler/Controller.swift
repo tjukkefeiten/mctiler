@@ -14,8 +14,13 @@ final class Controller {
     var onStatus: ((String, String) -> Void)?
     var onBindings: (([String: String]) throws -> Void)?
     var onQuit: (() -> Void)?
+    private var tileDrag: TileDrag?
+    private var dragMonitor: Any?
+    private let pointerFocus = PointerFocus()
+    private var pointerTimer: DispatchSourceTimer?
     private var pending = false // main-thread event coalescing
     private var focusGrace = Date.distantPast
+    private var pointerGrace = Date.distantPast
     private var lastSnapshot = WindowSnapshot(windows: [])
     private lazy var focusCoordinator = FocusCoordinator(adapter: adapter) { [weak self] delay, work in
         self?.queue.asyncAfter(deadline: .now()+delay, execute: work)
@@ -26,7 +31,23 @@ final class Controller {
         reconciler = Reconciler(desktop: desktop, adapter: adapter, configuration: config)
         adapter.onChange = { [weak self] in DispatchQueue.main.async { self?.schedule() } }
     }
+    deinit { if let dragMonitor { NSEvent.removeMonitor(dragMonitor) } }
     func start(displays: [Display], startPaused: Bool = false) {
+        dragMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .keyDown]) { [weak self] event in
+            guard let self else { return }
+            if event.type == .keyDown {
+                if event.keyCode == 53 { self.queue.async { self.tileDrag = nil } }
+                return
+            }
+            guard let point = event.cgEvent?.location else { return }
+            let down = event.type == .leftMouseDown
+            self.queue.async { self.handleDrag(down: down, point: point) }
+        }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(100))
+        timer.setEventHandler { [weak self] in self?.pollPointer() }
+        pointerTimer = timer
+        timer.resume()
         queue.async {
             self.desktop.updateDisplays(displays)
             self.applyConfiguration()
@@ -45,7 +66,7 @@ final class Controller {
         }
     }
     func schedule(displays: [Display]? = nil) {
-        if let displays { queue.async { self.desktop.updateDisplays(displays); self.reconciler.resetFailures() } }
+        if let displays { queue.async { self.tileDrag = nil; self.desktop.updateDisplays(displays); self.reconciler.resetFailures() } }
         guard !pending else { return }; pending = true
         DispatchQueue.main.asyncAfter(deadline: .now()+0.12) {
             self.queue.async {
@@ -58,7 +79,7 @@ final class Controller {
     func execute(_ args: [String]) -> Response {
         do {
             let command = try Command.parse(args)
-            if case .status = command {} else { focusCoordinator.cancel() }
+            if case .status = command {} else { focusCoordinator.cancel(); pointerFocus.reset(); tileDrag = nil }
             switch command {
             case .status: return Response(message: statusJSON())
             case .pause:
@@ -103,24 +124,80 @@ final class Controller {
                 reconciler.ingest(snapshot, allowFocus: Date() > focusGrace); lastSnapshot = snapshot
                 try command.apply(to: desktop)
                 focusGrace = Date().addingTimeInterval(0.6)
+                pointerGrace = focusGrace
                 applyLayout(snapshot)
-                if !paused, let focused = desktop.focusedWindow {
-                    focusCoordinator.request(focused, isCurrent: { [weak self] in
-                        guard let self else { return false }
-                        return !self.paused && self.desktop.focusedWindow == focused
-                    }, afterAttempt: { [weak self] in
-                        guard let self else { return }
-                        self.reportStackingFailures(self.reconciler.restoreStacking(force: true))
-                    }, completion: { [weak self] succeeded in
-                        guard let self else { return }
-                        if !succeeded { self.statusNote = "The application did not accept keyboard focus after 3 attempts" }
-                        self.publish()
-                    })
-                }
+                focusCurrentWindow()
             }
             publish()
             return Response(message: statusNote)
         } catch { statusNote = error.localizedDescription; publish(); return Response(ok: false, message: statusNote) }
+    }
+    private var pointerButtonsDown: Bool {
+        (0..<3).contains { CGEventSource.buttonState(.combinedSessionState, button: CGMouseButton(rawValue: UInt32($0))!) }
+    }
+    private func focusCurrentWindow(fromPointer: Bool = false) {
+        guard !paused, let focused = desktop.focusedWindow else { return }
+        focusCoordinator.request(focused, isCurrent: { [weak self] in
+            guard let self, !self.paused, self.desktop.focusedWindow == focused else { return false }
+            if fromPointer {
+                guard self.config.focusFollowsMouse, !self.pointerButtonsDown,
+                      let point = CGEvent(source: nil)?.location,
+                      self.adapter.window(at: point) == focused else { return false }
+            }
+            return true
+        }, afterAttempt: { [weak self] in
+            guard let self else { return }
+            self.reportStackingFailures(self.reconciler.restoreStacking(force: true))
+        }, completion: { [weak self] succeeded in
+            guard let self else { return }
+            if !succeeded { self.statusNote = "The application did not accept keyboard focus after 3 attempts" }
+            self.publish()
+        })
+    }
+    private func handleDrag(down: Bool, point: CGPoint) {
+        if down {
+            tileDrag = nil
+            focusCoordinator.cancel()
+            guard !paused, MacWindowAdapter.trusted,
+                  let source = adapter.window(at: point), desktop.isDraggableTile(source),
+                  let frame = lastSnapshot.windows.first(where: { $0.id == source })?.frame else { return }
+            tileDrag = TileDrag(source: source, originalFrame: frame, slots: desktop.tileSlots())
+            return
+        }
+        guard let drag = tileDrag else { return }
+        tileDrag = nil
+        guard !paused, MacWindowAdapter.trusted else { return }
+        let snapshot = adapter.snapshot(); lastSnapshot = snapshot
+        reconciler.ingest(snapshot, allowFocus: false)
+        var swapped = false
+        if desktop.tileSlots() == drag.slots,
+           let frame = snapshot.windows.first(where: { $0.id == drag.source })?.frame,
+           let destination = drag.destination(x: point.x, y: point.y, finalFrame: frame) {
+            swapped = desktop.swapTiles(drag.source, destination)
+        }
+        reconciler.resetFailures()
+        pointerFocus.reset()
+        focusGrace = Date().addingTimeInterval(0.6); pointerGrace = focusGrace
+        applyLayout(snapshot)
+        if swapped { focusCurrentWindow() }
+        publish()
+    }
+    private func pollPointer() {
+        guard let point = CGEvent(source: nil)?.location else { return }
+        // Recover a missed mouse-up without leaving layout permanently suspended.
+        if tileDrag != nil && !CGEventSource.buttonState(.combinedSessionState, button: .left) {
+            handleDrag(down: false, point: point)
+        }
+        let enabled = tileDrag == nil && !paused && config.focusFollowsMouse && !pointerButtonsDown && Date() > pointerGrace && MacWindowAdapter.trusted
+        guard let id = pointerFocus.update(x: point.x, y: point.y, enabled: enabled, target: {
+            guard let id = self.adapter.window(at: point), self.desktop.canFocusFromPointer(id) else { return nil }
+            return id
+        }) else { return }
+        focusCoordinator.cancel()
+        if id != desktop.focusedWindow { desktop.focus(id) }
+        focusGrace = Date().addingTimeInterval(0.35)
+        focusCurrentWindow(fromPointer: true)
+        publish()
     }
     private func applyConfiguration() {
         desktop.innerGap = config.innerGap; desktop.outerGap = config.outerGap
@@ -145,7 +222,9 @@ final class Controller {
         applyLayout(snapshot)
     }
     private func applyLayout(_ snapshot: WindowSnapshot) {
-        guard !desktop.displays.isEmpty else { return }
+        // Native movement must finish before any managed frame or stacking writes.
+        // Guard button state too: AX move notifications can precede mouse-down delivery.
+        guard !desktop.displays.isEmpty, tileDrag == nil, !pointerButtonsDown else { return }
         let actual = Dictionary(uniqueKeysWithValues: snapshot.windows.map { ($0.id, $0.frame) })
         // Native fullscreen is not part of our workspace model. Avoid moving windows
         // behind an app's native Space when it is foreground.
@@ -197,7 +276,7 @@ final class Controller {
         return text
     }
     private func publish() {
-        let title = paused ? "McT ‖" : "McT \(desktop.current?.name ?? "–")\(desktop.current?.floating == true ? " F" : " T")\(desktop.current?.fullscreen != nil ? " ▣" : "")"
+        let title = "\(desktop.current?.name ?? "–")\(paused ? " ‖" : "")"
         let note = statusNote + (config.suppressDock ? "\n" + DockSuppression.explanation : "")
         DispatchQueue.main.async { self.onStatus?(title, note) }
     }

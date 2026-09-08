@@ -112,7 +112,7 @@ public final class Desktop {
     public var displays: [Display] = []
     public var visible: [String: String] = [:] // display ID -> workspace
     public var focusedDisplay: String?
-    public var innerGap = 8.0
+    public var innerGap = 12.0
     public var outerGap = 8.0
     public init() { for n in 1...9 { workspaces[String(n)] = Workspace(String(n)) } }
     public var current: Workspace? { focusedDisplay.flatMap { visible[$0] }.flatMap { workspaces[$0] } }

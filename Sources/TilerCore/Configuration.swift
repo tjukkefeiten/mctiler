@@ -8,9 +8,10 @@ public struct AppRule: Equatable {
 }
 
 public struct Configuration {
-    public var innerGap = 8.0
+    public var innerGap = 12.0
     public var outerGap = 8.0
     public var suppressDock = false
+    public var focusFollowsMouse = true
     public var bindings: [String: String] = [:]
     public var rules: [AppRule] = []
     public var assignments: [String: String] = [:]
@@ -84,6 +85,7 @@ public struct Configuration {
                     case "inner-gap", "outer-gap":
                         guard let n = Double(value), n.isFinite, (0...200).contains(n) else { throw TilerError.message("Gap must be between 0 and 200") }
                         if key == "inner-gap" { result.innerGap = n } else { result.outerGap = n }
+                    case "focus-follows-mouse": result.focusFollowsMouse = try boolean(value)
                     case "experimental-suppress-dock": result.suppressDock = try boolean(value)
                     default: throw TilerError.message("Unknown option \(key)")
                     }

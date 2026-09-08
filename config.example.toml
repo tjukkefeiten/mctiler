@@ -1,13 +1,17 @@
+# Focus the visible window when the pointer moves into it; no click needed.
+focus-follows-mouse = true
+
 # McTiler v0.1. Copy to ~/.config/mctiler/config.toml, then run mctiler reload.
 # Supported TOML subset: scalar values, [bindings], [workspaces], and [[rules]].
 # Strings use double quotes; multiline strings, arrays, dotted keys, and inline
 # tables are not supported. Invalid configuration is rejected with a line number.
-inner-gap = 8
+# Gaps use macOS logical points (independent of Retina pixel density).
+inner-gap = 12
 outer-gap = 8
 
 # Requested, but currently unavailable: status explains why. This NEVER changes
 # Dock preferences or substitutes an auto-show delay for complete suppression.
-experimental-suppress-dock = true
+experimental-suppress-dock = false
 
 # Omit [bindings] to use all defaults. If present, it REPLACES the default table.
 # Keys are physical US keyboard positions. Option is spelled alt.

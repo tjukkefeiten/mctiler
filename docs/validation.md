@@ -93,3 +93,36 @@ For any future backend, use [the dedicated checks](dock-feasibility.md).
 - Floating/minimized/native-fullscreen windows are excluded from automatic tiled positions; insertion order survives floating round trips. Explicit tree edits disable automatic rebuilding for that workspace.
 - 37 tests passed, including exact quadrant/fifth/sixth geometry, gaps, floating and removal, explicit split preservation, and batch versus incremental discovery.
 - Release app rebuilt and signed. After a fresh Accessibility grant, resumed with six managed windows. The user accepted the live layout. The bottom-right region appeared crowded and an application rejected a resize; minimum window sizes are a possible cause, not independently confirmed. The user requested keeping the layout and closing issue #2.
+
+## Focus follows mouse — 2026-09-08
+
+- Enabled by default; `focus-follows-mouse = false` disables it on reload.
+- Samples the pointer every 100 ms and hit-tests through Accessibility only after movement. Hidden/minimized/native-fullscreen windows and tiles behind McTiler fullscreen are excluded. Pointer focus uses existing bounded activation retries and floating stacking.
+- Suppresses focus while mouse buttons are held, during keyboard-command grace, and when Accessibility reports an active menu. Retries check that the pointer still targets the window. Stationary pointer samples do not undo keyboard focus.
+- 41 tests passed, including pointer transitions, suppression/reset, fullscreen eligibility, and config validation. Release build and signing succeeded.
+- Opened paused after resetting stale Accessibility authorization. Live typing, overlapping floating windows, menu interaction, and multiple-display checks remain pending; issue #3 remains open.
+
+### Pointer-focus review — 2026-09-09
+
+The user reported only one successful focus change in five attempts. Review found that mouse focus shared the keyboard grace gate: movement during the next 350 ms was consumed, so stopping over a new window could leave it unfocused. Pointer suppression now uses a separate keyboard-only deadline; AX reconciliation retains its activation grace. Hit testing also walks AX parents when content omits AXWindow. All 42 tests passed and the release build succeeded. These fixes await renewed live testing; issue #3 remains open.
+
+## Drag and drop tiles — 2026-09-09
+
+- Issue #3 was accepted in live retesting and closed at the user's request; its implementation remains uncommitted alongside this work.
+- Issue #6 now supports native window dragging onto an original tile slot to swap window identities. Visible cross-display swaps update workspace membership and focus while preserving container weights. Involved workspaces become manual layouts.
+- Mouse-button state and active drag sessions suspend frame and stacking writes; mouse focus is suppressed. Content-only movement, resize, fullscreen, floating targets, gaps, cancelled moves, and changed layouts do not swap. Escape cancels the pending swap. No drop-target overlay yet.
+- 46 tests passed, including destination validation, manual geometry preservation, cross-display membership/focus, floating round trips, and ineligible/disappearing targets. Release build succeeded.
+- Opened paused after resetting stale Accessibility authorization. Native title-bar dragging and cancellation still need live validation; issue #6 remains open.
+
+## Default inner gap — 2026-09-09
+
+- Changed core and configuration defaults plus the example to 12 logical points between windows. Outer gap remains 8; explicit user values still override defaults.
+- Backed up the active config, set its inner gap to 12, and reloaded the running app successfully (`Running`). No app replacement or Accessibility reset was needed for the live config change.
+- 47 tests passed, including default horizontal/vertical quadrant gap geometry and usable-area bounds. Release packaging of the new built-in default is pending; the running build uses the explicit config value. Issue #4 remains open pending visual acceptance.
+
+## Accepted features and documentation — 2026-09-09
+
+- User accepted pointer focus, drag-and-drop with four windows, and the 12-point gaps. Issues #3, #6, and #4 were closed at their request; Option modifier issue #5 is also closed. Cross-display drag behavior has model coverage only.
+- Graphite/orange artwork is bundled as the menu-bar image and a standard/Retina ICNS app icon. Menu bar shows the current workspace number. App was rebuilt, signed, reauthorized, and resumed successfully with three windows and status Running. The packaged binary includes the new 12-point built-in default.
+- README now documents source-only installation (no releases exist), first launch, controls, configuration, recovery, uninstall, and current limitations. Detailed usage/development/recovery guides and a labelled layout illustration are linked. No private desktop screenshot is published.
+- Example configuration validates with 39 bindings; local documentation links, shell syntax, and git whitespace checks pass. Latest implementation regression suite: 47 passing tests. Live walkthroughs support the features described; clean-machine installation and broader hardware validation have not been performed.

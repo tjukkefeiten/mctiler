@@ -52,7 +52,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     func createMenu() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength); statusItem = item
-        item.button?.title = "McT …"
+        item.button?.title = "…"
+        if let url = Bundle.main.url(forResource: "McTiler-icon-graphite-orange", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            image.size = NSSize(width: 22, height: 22)
+            image.isTemplate = false
+            item.button?.image = image
+            item.button?.imagePosition = .imageLeading
+        }
+        item.button?.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+        item.button?.setAccessibilityLabel("McTiler workspace menu")
         let menu = NSMenu()
         let status = NSMenuItem(title: "Starting", action: nil, keyEquivalent: ""); menu.addItem(status); statusMenuItem = status
         menu.addItem(.separator())

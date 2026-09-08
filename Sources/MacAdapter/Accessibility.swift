@@ -139,6 +139,40 @@ public final class MacWindowAdapter: WindowAdapter {
         guard AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, position) == .success, let actual = frameOf(element) else { return false }
         return actual.approximately(frame, tolerance: 4)
     }
+    /// AX hit testing respects occlusion, including unmanaged windows and menus.
+    public func window(at point: CGPoint) -> String? {
+        // Menu-bar selection persists while a menu is open, even if the pointer
+        // strays over another app. Do not activate that app and dismiss the menu.
+        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier {
+            let application = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(application, 0.08)
+            if let bar = attribute(application, kAXMenuBarAttribute), CFGetTypeID(bar) == AXUIElementGetTypeID(),
+               let selected = attribute(bar as! AXUIElement, kAXSelectedChildrenAttribute) as? [AXUIElement], !selected.isEmpty { return nil }
+            if let focused = attribute(application, kAXFocusedUIElementAttribute), CFGetTypeID(focused) == AXUIElementGetTypeID(),
+               let role = attribute(focused as! AXUIElement, kAXRoleAttribute) as? String,
+               [kAXMenuRole, kAXMenuItemRole, kAXMenuBarItemRole].contains(role) { return nil }
+        }
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.08)
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &hit) == .success,
+              let hit else { return nil }
+        // Some apps omit AXWindow on content elements. Walk their AX parents
+        // instead of treating those content areas as unmanaged windows.
+        var element = hit
+        for _ in 0..<32 {
+            if let role = attribute(element, kAXRoleAttribute) as? String,
+               [kAXMenuRole, kAXMenuItemRole, kAXMenuBarItemRole].contains(role) { return nil }
+            if let id = entries.first(where: { CFEqual($0.value.element, element) })?.key { return id }
+            if let window = attribute(element, kAXWindowAttribute),
+               let id = entries.first(where: { CFEqual($0.value.element, window) })?.key { return id }
+            guard let parent = attribute(element, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID(),
+                  !CFEqual(parent, element) else { return nil }
+            element = parent as! AXUIElement
+        }
+        return nil
+    }
+
     public func focus(_ id: String) -> Bool {
         guard let entry = entries[id] else { return false }
         let application = AXUIElementCreateApplication(entry.app.processIdentifier)
