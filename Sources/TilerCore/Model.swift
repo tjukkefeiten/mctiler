@@ -62,11 +62,48 @@ public final class Workspace: Codable {
     public var name: String
     public var tree = Node()
     public var floating = false
+    public var automaticLayout = true
+    public var insertionOrder: [String] = []
+    private var automaticTiles: [String] = []
     public var focused: String?
     public var selected: String?
     public var fullscreen: String?
     public var preferredDisplay: String?
     public init(_ name: String) { self.name = name }
+    fileprivate func refreshAutomaticLayout(windows: [String: WindowState]) {
+        guard automaticLayout else { return }
+        let tiled = insertionOrder.filter { id in
+            guard let state = windows[id] else { return false }
+            return !state.floating && !state.minimized && !state.nativeFullscreen
+        }
+        guard tiled != automaticTiles || Set(tree.windows) != Set(insertionOrder) else { return }
+        automaticTiles = tiled
+        let leaves = Dictionary(uniqueKeysWithValues: tree.windows.compactMap { id in tree.leaf(id).map { (id, $0) } })
+        func leaf(_ id: String) -> Node {
+            let node = leaves[id] ?? Node(window: id); node.weight = 1; return node
+        }
+        let tiles = tiled.map(leaf)
+        var columns: [Node] = []
+        if let first = tiles.first {
+            columns.append(tiles.count > 2 ? Node(axis: .vertical, children: [first, tiles[2]]) : first)
+        }
+        if tiles.count > 1 {
+            var right = [tiles[1]]
+            if tiles.count > 3 {
+                var tail = tiles.last!
+                if tiles.count > 4 {
+                    for index in stride(from: tiles.count-2, through: 3, by: -1) {
+                        tail = Node(axis: (index-3).isMultiple(of: 2) ? .horizontal : .vertical, children: [tiles[index], tail])
+                    }
+                }
+                right.append(tail)
+            }
+            columns.append(right.count == 1 ? right[0] : Node(axis: .vertical, children: right))
+        }
+        tree.axis = .horizontal
+        tree.children = columns + insertionOrder.filter { !tiled.contains($0) }.map(leaf)
+        if let selected, tree.find(selected) == nil { self.selected = focused.flatMap { tree.leaf($0)?.id } }
+    }
 }
 
 public final class Desktop {
@@ -118,6 +155,12 @@ public final class Desktop {
         if focus { workspace.focused = id; workspace.selected = workspace.tree.leaf(id)?.id }
     }
     private func insert(_ node: Node, into workspace: Workspace) {
+        if let id = node.window { workspace.insertionOrder.append(id) }
+        if workspace.automaticLayout {
+            workspace.tree.children.append(node)
+            workspace.refreshAutomaticLayout(windows: windows)
+            return
+        }
         if let selected = workspace.selected, let target = workspace.tree.find(selected) {
             if target.window == nil { target.children.append(node) }
             else if let parent = workspace.tree.parent(of: selected), let index = parent.children.firstIndex(where: { $0.id == selected }) {
@@ -128,6 +171,8 @@ public final class Desktop {
     public func removeWindow(_ id: String) {
         guard let window = windows.removeValue(forKey: id), let workspace = workspaces[window.workspace] else { return }
         workspace.tree.remove(id)
+        workspace.insertionOrder.removeAll { $0 == id }
+        workspace.refreshAutomaticLayout(windows: windows)
         if workspace.fullscreen == id { workspace.fullscreen = nil }
         if workspace.focused == id { workspace.focused = workspace.tree.windows.first; workspace.selected = workspace.focused.flatMap { workspace.tree.leaf($0)?.id } }
         if let selected = workspace.selected, workspace.tree.find(selected) == nil { workspace.selected = workspace.focused.flatMap { workspace.tree.leaf($0)?.id } }
@@ -139,6 +184,7 @@ public final class Desktop {
         workspace.focused = id; workspace.selected = workspace.tree.leaf(id)?.id
     }
     public func layout(_ workspace: Workspace, on display: Display) -> [String: Rect] {
+        workspace.refreshAutomaticLayout(windows: windows)
         let members = windows.values.filter { $0.workspace == workspace.name && !$0.minimized && !$0.nativeFullscreen }
         if let full = workspace.fullscreen, members.contains(where: { $0.id == full }) {
             var frames = [full: display.fullscreen]
@@ -158,6 +204,7 @@ public final class Desktop {
            let frame = layout(workspace, on: display)[id] { windows[id]?.floatingFrame = frame }
         current?.fullscreen = nil
         windows[id]?.floating.toggle()
+        current?.refreshAutomaticLayout(windows: windows)
     }
     public func toggleWorkspaceFloating() throws {
         guard let workspace = current, let display = displays.first(where: { $0.id == focusedDisplay }) else { throw TilerError.message("No workspace") }
@@ -167,6 +214,8 @@ public final class Desktop {
     }
     public func split(_ axis: Axis) throws {
         guard let workspace = current else { throw TilerError.message("No workspace") }
+        workspace.refreshAutomaticLayout(windows: windows)
+        workspace.automaticLayout = false
         guard let selected = workspace.selected, let node = workspace.tree.find(selected) else { workspace.tree.axis = axis; return }
         if node.window == nil { node.axis = axis; return }
         guard let parent = workspace.tree.parent(of: selected), let index = parent.children.firstIndex(where: { $0.id == selected }) else { return }
@@ -175,6 +224,7 @@ public final class Desktop {
     }
     public func select(_ parent: Bool) throws {
         guard let workspace = current, let selected = workspace.selected, let node = workspace.tree.find(selected) else { throw TilerError.message("No selection") }
+        workspace.automaticLayout = false
         workspace.selected = parent ? workspace.tree.parent(of: selected)?.id ?? selected : node.children.first?.id ?? selected
     }
     public func neighbor(_ direction: Direction) -> String? {
@@ -203,6 +253,7 @@ public final class Desktop {
             return
         }
         guard let selected = workspace.selected, let node = workspace.tree.find(selected) else { return }
+        workspace.automaticLayout = false
         var cursor = node
         while let parent = workspace.tree.parent(of: cursor.id) {
             if parent.axis == direction.axis, let index = parent.children.firstIndex(where: { $0.id == cursor.id }) {
@@ -222,6 +273,7 @@ public final class Desktop {
             return
         }
         guard let selected = workspace.selected, var node = workspace.tree.find(selected) else { return }
+        workspace.automaticLayout = false
         while let parent = workspace.tree.parent(of: node.id) {
             if parent.axis == direction.axis, parent.children.count > 1 {
                 let delta = direction.sign * amount / 100

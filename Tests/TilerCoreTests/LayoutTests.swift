@@ -9,6 +9,46 @@ final class LayoutTests {
         desktop.updateDisplays([screen]); return desktop
     }
     func add(_ desktop: Desktop, _ id: String) { desktop.addWindow(id, frame: Rect(100, 100, 400, 300)) }
+    @Test func testAutomaticQuadrantsAndFifthWindow() {
+        let d = desktop(); add(d, "1")
+        #expect(d.layout(d.current!, on: screen)["1"] == screen.usable)
+        add(d, "2")
+        #expect(d.layout(d.current!, on: screen)["2"] == Rect(600, 24, 600, 716))
+        d.focus("1"); add(d, "3"); d.focus("1"); add(d, "4")
+        let four = d.layout(d.current!, on: screen)
+        #expect(four == ["1": Rect(0,24,600,358), "2": Rect(600,24,600,358),
+                         "3": Rect(0,382,600,358), "4": Rect(600,382,600,358)])
+        add(d, "5")
+        let five = d.layout(d.current!, on: screen)
+        for id in ["1", "2", "3"] { #expect(five[id] == four[id]) }
+        #expect(five["4"] == Rect(600,382,300,358))
+        #expect(five["5"] == Rect(900,382,300,358))
+        add(d, "6")
+        #expect(d.layout(d.current!, on: screen)["6"] == Rect(900,561,300,179))
+    }
+    @Test func testAutomaticGapsFloatingAndRemoval() throws {
+        let d = desktop(); d.innerGap = 12; d.outerGap = 12
+        for id in ["1", "2", "3", "4"] { add(d, id) }
+        let before = d.layout(d.current!, on: screen)
+        #expect(before["1"] == Rect(12,36,582,340))
+        #expect(before["4"] == Rect(606,388,582,340))
+        d.addWindow("dialog", frame: Rect(100,100,200,200), floating: true)
+        for id in ["1", "2", "3", "4"] { #expect(d.layout(d.current!, on: screen)[id] == before[id]) }
+        d.focus("2"); try d.toggleFloating(); try d.toggleFloating()
+        for id in ["1", "2", "3", "4"] { #expect(d.layout(d.current!, on: screen)[id] == before[id]) }
+        d.removeWindow("2"); add(d, "5")
+        #expect(d.layout(d.current!, on: screen)["5"] == before["4"])
+    }
+    @Test func testExplicitSplitSurvivesAutomaticMembershipChanges() throws {
+        let d = desktop()
+        for id in ["1", "2", "3", "4"] { add(d, id) }
+        d.focus("1"); try d.split(.horizontal); add(d, "5")
+        let before = d.layout(d.current!, on: screen)
+        #expect(before["5"] == Rect(300,24,300,358))
+        d.focus("4"); try d.toggleFloating(); try d.toggleFloating()
+        #expect(d.layout(d.current!, on: screen) == before)
+        #expect(!d.current!.automaticLayout)
+    }
     @Test func testNestedSplitsPartitionScreen() throws {
         let d = desktop(); add(d, "a"); try d.split(.vertical); add(d, "b")
         try d.select(true); try d.select(true); add(d, "c")

@@ -85,3 +85,11 @@ real applications. Automated core tests do not establish live compatibility.
 
 Permanent Dock suppression is unavailable and must not be marked as passing.
 For any future backend, use [the dedicated checks](dock-feasibility.md).
+
+## Quadrant layout — 2026-09-08
+
+- Previous Option/fullscreen/focus changes committed and pushed as `90df985`.
+- Automatic placement fills TL, TR, BL, BR, then splits only the newest bottom-right tile with alternating axes. Fewer windows expand to fill available space.
+- Floating/minimized/native-fullscreen windows are excluded from automatic tiled positions; insertion order survives floating round trips. Explicit tree edits disable automatic rebuilding for that workspace.
+- 37 tests passed, including exact quadrant/fifth/sixth geometry, gaps, floating and removal, explicit split preservation, and batch versus incremental discovery.
+- Release app rebuilt and signed. After a fresh Accessibility grant, resumed with six managed windows. The user accepted the live layout. The bottom-right region appeared crowded and an application rejected a resize; minimum window sizes are a possible cause, not independently confirmed. The user requested keeping the layout and closing issue #2.

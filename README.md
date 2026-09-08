@@ -68,6 +68,20 @@ physical US key positions.
 | Option + Control + R | Reload configuration |
 | Option + Control + Escape | Pause and restore windows |
 
+New workspaces use automatic quadrant tiling. One window fills the usable area;
+two share equal columns; the third splits the left column into top and bottom;
+the fourth splits the right column. The order is top-left, top-right,
+bottom-left, bottom-right. Window five splits the bottom-right quadrant side by
+side. Later windows split the newest tile, alternating vertical and horizontal.
+Configured inner and outer gaps apply throughout.
+
+Placement follows discovery/insertion order, independent of focus. Floating,
+minimized, and native-fullscreen windows do not consume tiled positions; returning
+them restores their place in that order. Closing or sending a window compacts the
+remaining tiles. Explicit split, container selection, tiled move, or tiled resize
+switches that workspace to manual layout for the rest of the session, preserving
+its tree and adjustments during subsequent discovery.
+
 Splitting a selected tile wraps it in a container. The next window opens beside
 that tile within the new split. Selecting a container makes new windows its
 children. Movement swaps siblings along the nearest matching split axis;

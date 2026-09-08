@@ -16,6 +16,23 @@ final class FakeAdapter: WindowAdapter {
 }
 
 final class ReconciliationTests {
+    @Test func testDiscoveryAndIncrementalCreationUseSameQuadrants() {
+        func make() -> (Desktop, Reconciler) {
+            let d = Desktop()
+            d.updateDisplays([Display(id: "main", frame: Rect(0,0,1200,800), usable: Rect(0,24,1200,716), fullscreen: Rect(0,24,1200,776))])
+            return (d, Reconciler(desktop: d, adapter: FakeAdapter(), configuration: .defaults))
+        }
+        let (batch, batchReconciler) = make(), (incremental, incrementalReconciler) = make()
+        let observed = (1...5).map { ObservedWindow(id: String($0), frame: Rect(0,0,400,300)) }
+        batchReconciler.ingest(WindowSnapshot(windows: observed, focused: "1"))
+        for count in 1...5 {
+            incrementalReconciler.ingest(WindowSnapshot(windows: Array(observed.prefix(count)), focused: "1"))
+        }
+        #expect(batch.layout(batch.current!, on: batch.displays[0]) == incremental.layout(incremental.current!, on: incremental.displays[0]))
+        let tree = batch.current!.tree.children.map(\.id)
+        batchReconciler.ingest(WindowSnapshot(windows: observed, focused: "2"))
+        #expect(batch.current!.tree.children.map(\.id) == tree)
+    }
     @Test func testFullscreenRaisesOwnedDialogsAfterFullscreenWindow() throws {
         let (d, adapter, r) = setup()
         r.ingest(WindowSnapshot(windows:[ObservedWindow(id:"a",frame:Rect(0,24,400,300),bundle:"app"), ObservedWindow(id:"dialog",frame:Rect(100,100,200,100),bundle:"app",floating:true,dialog:true)],focused:"a"))
