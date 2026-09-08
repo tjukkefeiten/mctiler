@@ -6,12 +6,49 @@ final class FakeAdapter: WindowAdapter {
     var observation = WindowSnapshot(windows: [])
     var attempts: [String] = []
     var rejecting = Set<String>()
+    var raised: [String] = []
+    var focusAttempts: [String] = []
+    var focusResults: [Bool] = []
     func snapshot() -> WindowSnapshot { observation }
     func setFrame(_ frame: Rect, for id: String) -> Bool { attempts.append(id); return !rejecting.contains(id) }
-    func focus(_ id: String) -> Bool { true }
+    func focus(_ id: String) -> Bool { focusAttempts.append(id); return focusResults.isEmpty ? true : focusResults.removeFirst() }
+    func raise(_ id: String) -> Bool { raised.append(id); return true }
 }
 
 final class ReconciliationTests {
+    @Test func testFullscreenRaisesOwnedDialogsAfterFullscreenWindow() throws {
+        let (d, adapter, r) = setup()
+        r.ingest(WindowSnapshot(windows:[ObservedWindow(id:"a",frame:Rect(0,24,400,300),bundle:"app"), ObservedWindow(id:"dialog",frame:Rect(100,100,200,100),bundle:"app",floating:true,dialog:true)],focused:"a"))
+        try Command.fullscreen.apply(to:d)
+        _ = r.restoreStacking()
+        #expect(adapter.raised == ["a", "dialog"])
+    }
+    @Test func testFloatingStaysAboveTilesWithoutRepeatedRaiseLoop() throws {
+        let (d, adapter, r) = setup()
+        let snapshot = WindowSnapshot(windows: [ObservedWindow(id:"a",frame:Rect(0,24,400,300)), ObservedWindow(id:"b",frame:Rect(400,24,400,300))],focused:"a")
+        r.ingest(snapshot)
+        try d.toggleFloating()
+        _ = r.restoreStacking()
+        #expect(adapter.raised == ["a"])
+        r.ingest(snapshot); _ = r.restoreStacking()
+        #expect(adapter.raised == ["a"])
+        r.ingest(WindowSnapshot(windows:snapshot.windows,focused:"b")); _ = r.restoreStacking()
+        #expect(adapter.raised == ["a", "a"])
+        #expect(d.focusedWindow == "b")
+        d.focus("a"); try d.toggleFloating(); _ = r.restoreStacking(force:true)
+        #expect(adapter.raised == ["a", "a"])
+        #expect(d.current?.tree.windows == ["a", "b"])
+    }
+    @Test func testStackingExcludesHiddenWindowsAndUnmanagedFocus() throws {
+        let (d, adapter, r) = setup()
+        let windows = [ObservedWindow(id:"a",frame:Rect(0,24,400,300),floating:true), ObservedWindow(id:"b",frame:Rect(400,24,400,300))]
+        r.ingest(WindowSnapshot(windows:windows,focused:"a"))
+        try d.sendWindow(to:"2"); _ = r.restoreStacking()
+        #expect(adapter.raised.isEmpty)
+        try d.switchWorkspace("2")
+        r.ingest(WindowSnapshot(windows:windows,focused:nil)); _ = r.restoreStacking(force:true)
+        #expect(adapter.raised.isEmpty)
+    }
     func setup() -> (Desktop, FakeAdapter, Reconciler) {
         let desktop = Desktop()
         desktop.updateDisplays([Display(id: "main", frame: Rect(0,0,1000,800), usable: Rect(0,24,1000,700), fullscreen: Rect(0,24,1000,776))])

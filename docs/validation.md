@@ -18,6 +18,31 @@
 
 ## Automated
 
+Latest clarification to issue #1 on 2026-09-08: Option+Shift+Escape now invokes
+`fullscreen`, not `floating`, in defaults and the migrated local configuration.
+The focus adapter requests the target AX window and checks both foreground
+application and focused window. A coordinator retries at most three times and
+cancels stale requests. All 33 tests passed, the release app was rebuilt and
+signed, and its old Accessibility entry was reset for the new signature. Actual
+keyboard input into the fullscreen window still needs live verification after
+granting access to this build.
+
+Issue #5 update on 2026-09-08: all 39 built-in and example bindings now use Option
+(`alt`), including Option+Shift+Escape for individual floating. The active local
+configuration was backed up and migrated without changing assigned commands or
+other settings, and collision validation passed. All 39 migrated shortcuts were
+registered and released successfully while management was paused. The expanded
+suite passed 30 tests, covering modifier masks, example/default agreement, custom
+Command bindings, and normalized binding collisions. Real keyboard behavior and
+pause/resume registration still need live validation with Accessibility access.
+
+Follow-up on 2026-09-08: the floating-stack update passed 27 tests, including
+raising floating windows after focus changes without a repeated polling loop,
+excluding hidden/unmanaged windows, and keeping dialogs above fullscreen windows.
+The default individual floating shortcut at that stage was Command+Shift+Escape. The release
+app was rebuilt and signed; live validation of this update awaits a renewed
+Accessibility grant because rebuilding changed the ad-hoc signature.
+
 Run `bash scripts/test.sh`. The suite covers nested geometry, floating round trips with
 window creation/destruction, fullscreen restoration and dialogs, directional
 navigation, resize/move, workspace sends, monitor changes, parking boundaries,

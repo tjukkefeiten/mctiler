@@ -17,6 +17,9 @@ final class Controller {
     private var pending = false // main-thread event coalescing
     private var focusGrace = Date.distantPast
     private var lastSnapshot = WindowSnapshot(windows: [])
+    private lazy var focusCoordinator = FocusCoordinator(adapter: adapter) { [weak self] delay, work in
+        self?.queue.asyncAfter(deadline: .now()+delay, execute: work)
+    }
     init() throws {
         config = try Configuration.load()
         adapter = MacWindowAdapter(journal: try RecoveryJournal())
@@ -55,6 +58,7 @@ final class Controller {
     func execute(_ args: [String]) -> Response {
         do {
             let command = try Command.parse(args)
+            if case .status = command {} else { focusCoordinator.cancel() }
             switch command {
             case .status: return Response(message: statusJSON())
             case .pause:
@@ -100,7 +104,19 @@ final class Controller {
                 try command.apply(to: desktop)
                 focusGrace = Date().addingTimeInterval(0.6)
                 applyLayout(snapshot)
-                if !paused, let focused = desktop.focusedWindow { _ = adapter.focus(focused) }
+                if !paused, let focused = desktop.focusedWindow {
+                    focusCoordinator.request(focused, isCurrent: { [weak self] in
+                        guard let self else { return false }
+                        return !self.paused && self.desktop.focusedWindow == focused
+                    }, afterAttempt: { [weak self] in
+                        guard let self else { return }
+                        self.reportStackingFailures(self.reconciler.restoreStacking(force: true))
+                    }, completion: { [weak self] succeeded in
+                        guard let self else { return }
+                        if !succeeded { self.statusNote = "The application did not accept keyboard focus after 3 attempts" }
+                        self.publish()
+                    })
+                }
             }
             publish()
             return Response(message: statusNote)
@@ -156,6 +172,10 @@ final class Controller {
         if !failed.isDisjoint(with: parked) { pauseForFailure("An application rejected workspace parking"); return }
         if !failed.isEmpty { statusNote = adapter.lastError ?? "\(failed.count) windows have constrained geometry" }
         else { statusNote = "Running" }
+        reportStackingFailures(reconciler.restoreStacking())
+    }
+    private func reportStackingFailures(_ failed: [String]) {
+        if !failed.isEmpty { statusNote = "\(failed.count) floating/fullscreen windows could not be raised above the tiles" }
     }
     private func pauseForFailure(_ reason: String) {
         paused = true

@@ -26,6 +26,7 @@ public protocol WindowAdapter: AnyObject {
     func snapshot() -> WindowSnapshot
     func setFrame(_ frame: Rect, for id: String) -> Bool
     func focus(_ id: String) -> Bool
+    func raise(_ id: String) -> Bool
 }
 
 public final class Reconciler {
@@ -35,11 +36,16 @@ public final class Reconciler {
     public private(set) var rejected: [String: Rect] = [:]
     public private(set) var expected: [String: Rect] = [:]
     private var lastObservedFocus: String?
+    private var stackingDirty = true
+    private var lastOverlayOrder: [String] = []
+    private var lastObservedWindows = Set<String>()
     public init(desktop: Desktop, adapter: WindowAdapter, configuration: Configuration) {
         self.desktop = desktop; self.adapter = adapter; self.configuration = configuration
     }
     public func ingest(_ snapshot: WindowSnapshot, allowFocus: Bool = true) {
         let live = Set(snapshot.windows.map(\.id))
+        if live != lastObservedWindows { stackingDirty = true }
+        lastObservedWindows = live
         if snapshot.complete {
             for id in Array(desktop.windows.keys) where !live.contains(id) { desktop.removeWindow(id); expected[id] = nil; rejected[id] = nil }
         }
@@ -64,6 +70,7 @@ public final class Reconciler {
             }
         }
         let focusChanged = snapshot.focused != lastObservedFocus
+        if focusChanged { stackingDirty = true }
         lastObservedFocus = snapshot.focused
         // macOS can retain a parked window as its focused AX element when the
         // destination workspace is empty. Only an actual focus change activates
@@ -82,10 +89,32 @@ public final class Reconciler {
             guard let frame = targets[id], frame.valid else { continue }
             if actual[id]?.approximately(frame) == true { expected[id] = frame; rejected[id] = nil; continue }
             if rejected[id]?.approximately(frame) == true { failures.append(id); continue }
+            stackingDirty = true
             if adapter.setFrame(frame, for: id) { expected[id] = frame; rejected[id] = nil }
             else { rejected[id] = frame; failures.append(id) }
         }
         return failures
     }
-    public func resetFailures() { rejected = [:]; expected = [:] }
+    public func restoreStacking(force: Bool = false) -> [String] {
+        var order: [String] = []
+        for display in desktop.displays {
+            guard let name = desktop.visible[display.id], let workspace = desktop.workspaces[name] else { continue }
+            let visible = Set(desktop.layout(workspace, on: display).keys)
+            if let full = workspace.fullscreen, visible.contains(full) { order.append(full) }
+            if workspace.floating {
+                if let focused = workspace.focused, visible.contains(focused), !order.contains(focused) { order.append(focused) }
+            } else {
+                order += workspace.tree.windows.filter { visible.contains($0) && desktop.windows[$0]?.floating == true && $0 != workspace.fullscreen }
+            }
+        }
+        if let focused = desktop.focusedWindow, focused != desktop.current?.fullscreen, let index = order.firstIndex(of: focused) {
+            order.remove(at: index); order.append(focused)
+        }
+        guard force || stackingDirty || order != lastOverlayOrder else { return [] }
+        // Do not raise managed windows over an unrelated foreground application.
+        guard let observed = lastObservedFocus, desktop.windows[observed] != nil else { return [] }
+        lastOverlayOrder = order; stackingDirty = false
+        return order.filter { !adapter.raise($0) }
+    }
+    public func resetFailures() { rejected = [:]; expected = [:]; stackingDirty = true }
 }

@@ -18,19 +18,19 @@ public struct Configuration {
     public static var defaults: Configuration {
         var config = Configuration()
         for direction in ["left", "right", "up", "down"] {
-            config.bindings["cmd-\(direction)"] = "focus \(direction)"
-            config.bindings["cmd-shift-\(direction)"] = "move \(direction)"
-            config.bindings["cmd-ctrl-\(direction)"] = "resize \(direction) 10"
+            config.bindings["alt-\(direction)"] = "focus \(direction)"
+            config.bindings["alt-shift-\(direction)"] = "move \(direction)"
+            config.bindings["alt-ctrl-\(direction)"] = "resize \(direction) 10"
         }
         for n in 1...9 {
-            config.bindings["cmd-\(n)"] = "workspace \(n)"
-            config.bindings["cmd-shift-\(n)"] = "send \(n)"
+            config.bindings["alt-\(n)"] = "workspace \(n)"
+            config.bindings["alt-shift-\(n)"] = "send \(n)"
         }
         config.bindings.merge([
-            "cmd-shift-space": "floating", "cmd-ctrl-space": "workspace-floating",
-            "cmd-ctrl-f": "fullscreen", "cmd-ctrl-h": "split horizontal", "cmd-ctrl-v": "split vertical",
-            "cmd-ctrl-p": "select parent", "cmd-ctrl-c": "select child",
-            "cmd-ctrl-r": "reload", "cmd-ctrl-escape": "pause"
+            "alt-shift-escape": "fullscreen", "alt-ctrl-space": "workspace-floating",
+            "alt-ctrl-f": "fullscreen", "alt-ctrl-h": "split horizontal", "alt-ctrl-v": "split vertical",
+            "alt-ctrl-p": "select parent", "alt-ctrl-c": "select child",
+            "alt-ctrl-r": "reload", "alt-ctrl-escape": "pause"
         ]) { _, new in new }
         return config
     }

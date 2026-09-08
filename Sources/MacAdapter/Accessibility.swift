@@ -141,9 +141,25 @@ public final class MacWindowAdapter: WindowAdapter {
     }
     public func focus(_ id: String) -> Bool {
         guard let entry = entries[id] else { return false }
-        let activated = entry.app.activate(options: [])
+        let application = AXUIElementCreateApplication(entry.app.processIdentifier)
+        AXUIElementSetMessagingTimeout(application, 0.08)
+        _ = entry.app.activate(options: [])
         _ = AXUIElementSetAttributeValue(entry.element, kAXMainAttribute as CFString, kCFBooleanTrue)
-        return AXUIElementPerformAction(entry.element, kAXRaiseAction as CFString) == .success && activated
+        if writable(application, kAXFocusedWindowAttribute) {
+            _ = AXUIElementSetAttributeValue(application, kAXFocusedWindowAttribute as CFString, entry.element)
+        }
+        _ = raise(id)
+        // Activation is asynchronous. A successful raise alone does not prove
+        // that keyboard input will reach this window; the controller retries
+        // briefly and checks the actual foreground app and focused AX window.
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == entry.app.processIdentifier,
+              let focused = attribute(application, kAXFocusedWindowAttribute) else { return false }
+        return CFEqual(focused, entry.element)
+    }
+    public func raise(_ id: String) -> Bool {
+        guard let entry = entries[id] else { return false }
+        // Raising does not explicitly activate the application or set its main window.
+        return AXUIElementPerformAction(entry.element, kAXRaiseAction as CFString) == .success
     }
     public func recover(displays: [Display]) -> (restored: Int, remaining: Int) {
         guard Self.trusted, !displays.isEmpty else { return (0, journal.entries.count) }

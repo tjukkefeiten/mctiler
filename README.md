@@ -47,25 +47,26 @@ optional; McTiler never enables it automatically.
 
 ## Layout and shortcuts
 
-Command-based shortcuts override application shortcuts while management is
-active, including Command+arrows (text navigation), Command+digits (tabs), and
-Command+Control+F (some applications' native fullscreen). Pause releases all
-bindings. Resume from the menu bar or CLI. Shortcuts use physical US key positions.
+Option is the default primary modifier (`alt` in configuration). Normal Command
+shortcuts remain available. Option-based bindings can overlap character entry
+or navigation shortcuts on your keyboard layout; all bindings are configurable.
+Pause releases all bindings. Resume from the menu bar or CLI. Shortcuts use
+physical US key positions.
 
 | Shortcut | Action |
 | --- | --- |
-| Command + arrows | Focus in a direction |
-| Command + Shift + arrows | Move the selected tile/container, or move a floating window |
-| Command + Control + arrows | Resize; right/down grow, left/up shrink |
-| Command + 1–9 | Switch workspace |
-| Command + Shift + 1–9 | Send focused window to workspace |
-| Command + Shift + Space | Toggle individual floating |
-| Command + Control + Space | Toggle workspace floating |
-| Command + Control + F | Toggle McTiler fullscreen |
-| Command + Control + H / V | Set horizontal / vertical split |
-| Command + Control + P / C | Select parent / first child |
-| Command + Control + R | Reload configuration |
-| Command + Control + Escape | Pause and restore windows |
+| Option + arrows | Focus in a direction |
+| Option + Shift + arrows | Move the selected tile/container, or move a floating window |
+| Option + Control + arrows | Resize; right/down grow, left/up shrink |
+| Option + 1–9 | Switch workspace |
+| Option + Shift + 1–9 | Send focused window to workspace |
+| Option + Shift + Escape | Toggle fullscreen, raise, and focus |
+| Option + Control + Space | Toggle workspace floating |
+| Option + Control + F | Toggle McTiler fullscreen |
+| Option + Control + H / V | Set horizontal / vertical split |
+| Option + Control + P / C | Select parent / first child |
+| Option + Control + R | Reload configuration |
+| Option + Control + Escape | Pause and restore windows |
 
 Splitting a selected tile wraps it in a container. The next window opens beside
 that tile within the new split. Selecting a container makes new windows its
@@ -73,13 +74,19 @@ children. Movement swaps siblings along the nearest matching split axis;
 cross-container reparenting and i3 command compatibility are not implemented.
 
 Floating windows retain a place in the tree without consuming tiled space.
+They are raised above tiled windows after layout and focus changes, with the
+focused floating window raised last. Unchanged polls do not repeatedly raise
+windows. Returning to tiling removes the window from the floating order.
+Raising does not explicitly activate the floating window's application; behavior
+still depends on the application's Accessibility support.
 Workspace floating retains the tree as well. New windows join that tree even
 while the workspace is floating. Switching back restores surviving tiles;
 individually floated windows stay floating. Drag or resize floating windows with
 normal macOS window controls.
 
-Fullscreen fills the display below the top menu bar, ignoring Dock-reserved
-space. It stays in the current workspace and restores the previous geometry on
+Option+Shift+Escape toggles fullscreen and requests keyboard focus for that
+window. Option+Control+F remains an equivalent shortcut. Fullscreen fills the
+display below the top menu bar, ignoring Dock-reserved space. It stays in the current workspace and restores the previous geometry on
 exit. Other ordinary windows are parked temporarily. Same-application dialogs
 remain accessible. Focusing another ordinary window exits fullscreen.
 Menu bar auto-hide follows your macOS setting; McTiler does not change it.
@@ -114,6 +121,24 @@ must be double-quoted. Unsupported syntax and unknown keys are errors. A
 working configuration. Failed hotkey registration attempts restore the previous
 bindings. Application rules use exact bundle IDs, first match wins, and apply
 to newly discovered windows; restart to reapply them to all windows.
+
+Existing `[bindings]` tables override the defaults, so changing the application
+alone does not migrate a custom configuration. Back up your config, replace the
+`cmd` modifier with `alt` in each binding key, keep the assigned commands and
+other preferences, and run `check-config` before reloading. Resolve duplicate
+bindings rather than overwriting them. For example:
+
+```toml
+alt-shift-escape = "fullscreen"
+alt-ctrl-space = "workspace-floating"
+alt-ctrl-escape = "pause"
+```
+
+If you still have the older `cmd-shift-space = "floating"` binding, use
+`alt-shift-escape = "fullscreen"` for the current fullscreen toggle.
+If it already says `floating`, change that command to `fullscreen` and reload.
+Individual floating remains available through `mctiler floating` or a custom binding.
+Command remains a supported modifier for custom bindings.
 
 ## Dock suppression
 
