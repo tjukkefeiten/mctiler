@@ -64,15 +64,26 @@ alt-ctrl-escape = "pause"
 # "1" = "DISPLAY-UUID"
 # "2" = "DISPLAY-UUID"
 
-# First matching bundle ID wins. Rules apply when a window is first discovered.
-# [[rules]]
-# bundle = "com.apple.systempreferences"
-# floating = true
-#
+# Application rules: one [[rules]] block per application, after other tables.
+# Match exact bundle IDs. First matching rule wins; rules are not combined.
+# Rules apply when a window is first discovered. After reload, close and reopen
+# the application's windows to apply a changed rule.
+
+# Working example from the author's config: keep System Settings out of tiling.
+# Floating windows remain managed. This does not guarantee always-on-top behavior.
+[[rules]]
+bundle = "com.apple.systempreferences"
+floating = true
+
+# Optional: send newly discovered Terminal windows to workspace 2.
+# Uncomment the entire block to enable it.
 # [[rules]]
 # bundle = "com.apple.Terminal"
 # workspace = "2"
-#
+
+# Optional: leave an application entirely unmanaged (no tiling or stacking).
+# Replace the placeholder with its bundle ID and uncomment the entire block.
+# Use floating = true instead if you want McTiler to keep managing the window.
 # [[rules]]
 # bundle = "some.application.bundle"
 # ignore = true

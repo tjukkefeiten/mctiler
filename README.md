@@ -135,13 +135,15 @@ A `[bindings]` table **replaces all default shortcuts**. To add a floating short
 alt-shift-space = "floating"
 ```
 
-Application rules go after other tables and match exact bundle identifiers. For example, float newly discovered System Settings windows:
+The example config includes an active System Settings floating rule from the author’s configuration, plus commented examples for workspace assignment and ignoring applications. Application rules go after other tables and match exact bundle identifiers:
 
 ```toml
 [[rules]]
 bundle = "com.apple.systempreferences"
 floating = true
 ```
+
+`floating = true` keeps a window managed but excludes it from tiling; it does not guarantee always-on-top behavior. `ignore = true` leaves the application unmanaged, including stacking.
 
 First matching rule wins; rules apply to newly discovered windows. Reload does not reclassify existing windows. Strings require double quotes; unsupported TOML syntax and unknown keys are rejected. An invalid reload preserves the working config. See the example for monitor assignments and all bindings.
 
