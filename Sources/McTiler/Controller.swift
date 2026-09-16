@@ -22,6 +22,9 @@ final class Controller {
     private var focusGrace = Date.distantPast
     private var pointerGrace = Date.distantPast
     private var lastSnapshot = WindowSnapshot(windows: [])
+    private lazy var stackingCoordinator = StackingCoordinator { [weak self] delay, work in
+        self?.queue.asyncAfter(deadline: .now()+delay, execute: work)
+    }
     private lazy var focusCoordinator = FocusCoordinator(adapter: adapter) { [weak self] delay, work in
         self?.queue.asyncAfter(deadline: .now()+delay, execute: work)
     }
@@ -79,7 +82,7 @@ final class Controller {
     func execute(_ args: [String]) -> Response {
         do {
             let command = try Command.parse(args)
-            if case .status = command {} else { focusCoordinator.cancel(); pointerFocus.reset(); tileDrag = nil }
+            if case .status = command {} else { focusCoordinator.cancel(); stackingCoordinator.cancel(); pointerFocus.reset(); tileDrag = nil }
             switch command {
             case .status: return Response(message: statusJSON())
             case .pause:
@@ -137,6 +140,18 @@ final class Controller {
     }
     private func focusCurrentWindow(fromPointer: Bool = false) {
         guard !paused, let focused = desktop.focusedWindow else { return }
+        stackingCoordinator.request(isCurrent: { [weak self] in
+            guard let self else { return false }
+            return !self.paused && self.tileDrag == nil && !self.pointerButtonsDown &&
+                self.desktop.focusedWindow == focused && MacWindowAdapter.trusted
+        }, restore: { [weak self] in
+            guard let self else { return }
+            // Read actual foreground focus; cached reconciliation may still name
+            // the app that was active before the focus request.
+            let snapshot = self.adapter.snapshot()
+            guard snapshot.focused == focused else { return }
+            self.reportStackingFailures(self.reconciler.restoreStacking(force: true, foreground: snapshot))
+        })
         focusCoordinator.request(focused, isCurrent: { [weak self] in
             guard let self, !self.paused, self.desktop.focusedWindow == focused else { return false }
             if fromPointer {
@@ -158,6 +173,7 @@ final class Controller {
         if down {
             tileDrag = nil
             focusCoordinator.cancel()
+            stackingCoordinator.cancel()
             guard !paused, MacWindowAdapter.trusted,
                   let source = adapter.window(at: point), desktop.isDraggableTile(source),
                   let frame = lastSnapshot.windows.first(where: { $0.id == source })?.frame else { return }
@@ -189,7 +205,14 @@ final class Controller {
             handleDrag(down: false, point: point)
         }
         let enabled = tileDrag == nil && !paused && config.focusFollowsMouse && !pointerButtonsDown && Date() > pointerGrace && MacWindowAdapter.trusted
-        guard let id = pointerFocus.update(x: point.x, y: point.y, enabled: enabled, target: {
+        guard let id = pointerFocus.update(x: point.x, y: point.y, enabled: enabled, moved: {
+            if self.desktop.focusDisplayFromPointer(x: point.x, y: point.y) {
+                self.focusCoordinator.cancel()
+                self.stackingCoordinator.cancel()
+                self.focusGrace = Date().addingTimeInterval(0.35)
+                self.publish()
+            }
+        }, target: {
             guard let id = self.adapter.window(at: point), self.desktop.canFocusFromPointer(id) else { return nil }
             return id
         }) else { return }
@@ -266,11 +289,17 @@ final class Controller {
     private func statusJSON() -> String {
         let object: [String: Any] = [
             "paused": paused, "message": statusNote, "focusedWorkspace": desktop.current?.name ?? "",
-            "focusedWindow": desktop.focusedWindow ?? "", "windows": desktop.windows.count,
+            "focusedWindow": desktop.focusedWindow ?? "", "focusedDisplay": desktop.focusedDisplay ?? "", "windows": desktop.windows.count,
             "visibleWorkspaces": desktop.visible,
-            "displays": desktop.displays.map { ["id": $0.id, "width": String($0.frame.width), "height": String($0.frame.height)] },
+            "displays": desktop.displays.map { ["id": $0.id, "x": String($0.frame.x), "y": String($0.frame.y), "width": String($0.frame.width), "height": String($0.frame.height)] },
             "dockSuppression": ["requested": config.suppressDock, "available": DockSuppression.available, "explanation": DockSuppression.explanation],
-            "recoveryEntries": adapter.journal.entries.count
+            "recoveryEntries": adapter.journal.entries.count,
+            "stacking": adapter.stackingDiagnostics(),
+            "windowStates": desktop.windows.values.sorted { $0.id < $1.id }.map {
+                ["id": $0.id, "bundle": $0.bundle, "workspace": $0.workspace,
+                 "floating": $0.floating, "minimized": $0.minimized,
+                 "fullscreen": desktop.workspaces[$0.workspace]?.fullscreen == $0.id] as [String: Any]
+            }
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]), let text = String(data: data, encoding: .utf8) else { return statusNote }
         return text

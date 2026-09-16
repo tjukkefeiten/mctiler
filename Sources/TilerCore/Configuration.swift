@@ -28,7 +28,7 @@ public struct Configuration {
             config.bindings["alt-shift-\(n)"] = "send \(n)"
         }
         config.bindings.merge([
-            "alt-shift-escape": "fullscreen", "alt-ctrl-space": "workspace-floating",
+            "alt-space": "fullscreen", "alt-ctrl-space": "workspace-floating",
             "alt-ctrl-f": "fullscreen", "alt-ctrl-h": "split horizontal", "alt-ctrl-v": "split vertical",
             "alt-ctrl-p": "select parent", "alt-ctrl-c": "select child",
             "alt-ctrl-r": "reload", "alt-ctrl-escape": "pause"

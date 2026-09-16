@@ -95,7 +95,7 @@ public final class Reconciler {
         }
         return failures
     }
-    public func restoreStacking(force: Bool = false) -> [String] {
+    public func restoreStacking(force: Bool = false, foreground: WindowSnapshot? = nil) -> [String] {
         var order: [String] = []
         for display in desktop.displays {
             guard let name = desktop.visible[display.id], let workspace = desktop.workspaces[name] else { continue }
@@ -112,7 +112,8 @@ public final class Reconciler {
         }
         guard force || stackingDirty || order != lastOverlayOrder else { return [] }
         // Do not raise managed windows over an unrelated foreground application.
-        guard let observed = lastObservedFocus, desktop.windows[observed] != nil else { return [] }
+        let observed = foreground == nil ? lastObservedFocus : foreground?.focused
+        guard let observed, desktop.windows[observed] != nil else { return [] }
         lastOverlayOrder = order; stackingDirty = false
         return order.filter { !adapter.raise($0) }
     }

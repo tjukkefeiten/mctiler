@@ -11,7 +11,8 @@ final class ConfigurationTests {
             #expect(hotkey.modifiers & 2048 != 0)
             #expect(hotkey.modifiers & 256 == 0)
         }
-        #expect(bindings["alt-shift-escape"] == "fullscreen")
+        #expect(bindings["alt-space"] == "fullscreen")
+        #expect(bindings["alt-shift-escape"] == nil)
         #expect(bindings["alt-ctrl-space"] == "workspace-floating")
         #expect(bindings["alt-ctrl-escape"] == "pause")
         #expect(bindings["alt-ctrl-f"] == "fullscreen")

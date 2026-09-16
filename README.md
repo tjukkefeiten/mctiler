@@ -72,7 +72,7 @@ One window fills the usable area. Two share columns. Window three splits the lef
 
 Drag a window by its title bar and release the pointer inside another tile's original position to swap them. Focus follows the moved window. Drops in gaps or outside eligible tiles restore the layout; Escape cancels the swap. Floating windows move normally. Explicit splits, resizing, movement, or a tile swap put the workspace into manual layout so your changes persist for the session.
 
-Move the mouse into a visible window to focus it. A stationary pointer does not undo keyboard focus, and dragging suppresses pointer focus. **Option + Shift + Escape** toggles fullscreen and keyboard focus; press again to restore the previous layout. Fullscreen reserves the top menu bar and stays in the same workspace. Menu-bar auto-hide still follows your macOS setting.
+Move the mouse into a visible window to focus it. A stationary pointer does not undo keyboard focus, and dragging suppresses pointer focus. **Option + Space** toggles fullscreen and keyboard focus; press again to restore the previous layout. Fullscreen reserves the top menu bar and stays in the same workspace. Menu-bar auto-hide still follows your macOS setting.
 
 [Read the detailed guide](docs/usage.md) for nested splits, display/workspace behavior, and floating-window stacking.
 
@@ -87,7 +87,7 @@ Option is spelled `alt` in configuration. Keys refer to physical US keyboard pos
 | Option + Control + arrows | Resize; right/down grow, left/up shrink |
 | Option + 1–9 | Switch workspace |
 | Option + Shift + 1–9 | Send the focused window to a workspace |
-| Option + Shift + Escape | Toggle fullscreen, raise, and focus |
+| Option + Space | Toggle fullscreen, raise, and focus |
 | Option + Control + F | Same fullscreen toggle |
 | Option + Control + Space | Toggle floating for the whole workspace |
 | Option + Control + H / V | Create a horizontal / vertical split |
@@ -132,7 +132,7 @@ cp -n config.example.toml ~/.config/mctiler/config.toml
 A `[bindings]` table **replaces all default shortcuts**. To add a floating shortcut while retaining other controls, start from the full example and add this inside its `[bindings]` table:
 
 ```toml
-alt-space = "floating"
+alt-shift-space = "floating"
 ```
 
 Application rules go after other tables and match exact bundle identifiers. For example, float newly discovered System Settings windows:
@@ -145,7 +145,7 @@ floating = true
 
 First matching rule wins; rules apply to newly discovered windows. Reload does not reclassify existing windows. Strings require double quotes; unsupported TOML syntax and unknown keys are rejected. An invalid reload preserves the working config. See the example for monitor assignments and all bindings.
 
-Older configs using `cmd` retain their custom shortcuts. Edit the keys to use `alt`, and set `alt-shift-escape = "fullscreen"` for the current fullscreen behavior, then validate and reload.
+Older configs using `cmd` retain their custom shortcuts. Edit the keys to use `alt`, and set `alt-space = "fullscreen"` for the current fullscreen behavior, then validate and reload.
 
 ## Troubleshooting
 
@@ -168,6 +168,21 @@ open dist/McTiler.app --args --paused
 ```
 
 Click the menu-bar icon → **Grant Accessibility Access…**, enable the new entry in Settings, and choose **Resume**. If you moved the app to Applications, open that copy instead. Avoid rebuilding between granting permission and testing.
+
+### Refresh an outdated Accessibility icon
+
+First quit and reopen System Settings. If the icon remains generic, refresh the
+registration for the exact app copy you launch (this command assumes the build
+in this checkout):
+
+```sh
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$PWD/dist/McTiler.app"
+```
+
+Then reopen System Settings → Privacy & Security → Accessibility. If you installed
+McTiler elsewhere, use that app path instead. An icon refresh does not require
+resetting Accessibility permission. If the entry still looks wrong, report which
+app copy you use and whether Finder displays the expected icon.
 
 ### Current limitations
 

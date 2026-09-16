@@ -27,6 +27,7 @@ public final class MacWindowAdapter: WindowAdapter {
         var title: String
     }
     private var entries: [String: Entry] = [:]
+    private var raiseResults: [String: Int32] = [:]
     private var observers: [pid_t: AXObserver] = [:]
     private var observerTokens: [pid_t: ObserverToken] = [:]
     private var cooldown: [pid_t: Date] = [:]
@@ -94,7 +95,7 @@ public final class MacWindowAdapter: WindowAdapter {
             }
         }
         let stale = Set(entries.filter { !appIDs.contains($0.value.app.processIdentifier) || (complete && !live.contains($0.key)) }.keys)
-        for id in stale { entries[id] = nil }
+        for id in stale { entries[id] = nil; raiseResults[id] = nil }
         if !stale.isEmpty { try? journal.remove(stale) }
         return WindowSnapshot(windows: result, focused: focused, complete: complete)
     }
@@ -193,7 +194,31 @@ public final class MacWindowAdapter: WindowAdapter {
     public func raise(_ id: String) -> Bool {
         guard let entry = entries[id] else { return false }
         // Raising does not explicitly activate the application or set its main window.
-        return AXUIElementPerformAction(entry.element, kAXRaiseAction as CFString) == .success
+        let result = AXUIElementPerformAction(entry.element, kAXRaiseAction as CFString)
+        raiseResults[id] = result.rawValue
+        return result == .success
+    }
+    /// Diagnostic metadata only: no window titles or screen contents.
+    public func stackingDiagnostics() -> [String: Any] {
+        let rows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let order: [[String: Any]] = rows.filter { ($0[kCGWindowLayer as String] as? Int) == 0 }.map {
+            ["pid": $0[kCGWindowOwnerPID as String] ?? 0,
+             "windowID": $0[kCGWindowNumber as String] ?? 0,
+             "bounds": $0[kCGWindowBounds as String] ?? [:]]
+        }
+        let managed: [[String: Any]] = entries.keys.sorted().compactMap { id in
+            guard let entry = entries[id], let frame = frameOf(entry.element) else { return nil }
+            var info: [String: Any] = ["id": id, "pid": entry.app.processIdentifier,
+                "bundle": entry.app.bundleIdentifier ?? "", "frame": [frame.x, frame.y, frame.width, frame.height]]
+            if let result = raiseResults[id] { info["lastRaiseResult"] = result }
+            return info
+        }
+        var info: [String: Any] = ["frontToBack": order, "managed": managed,
+            "frontmostBundle": NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""]
+        if let point = CGEvent(source: nil)?.location {
+            info["pointer"] = ["x": point.x, "y": point.y, "axWindow": window(at: point) ?? ""] as [String: Any]
+        }
+        return info
     }
     public func recover(displays: [Display]) -> (restored: Int, remaining: Int) {
         guard Self.trusted, !displays.isEmpty else { return (0, journal.entries.count) }

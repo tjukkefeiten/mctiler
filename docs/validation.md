@@ -126,3 +126,29 @@ The user reported only one successful focus change in five attempts. Review foun
 - Graphite/orange artwork is bundled as the menu-bar image and a standard/Retina ICNS app icon. Menu bar shows the current workspace number. App was rebuilt, signed, reauthorized, and resumed successfully with three windows and status Running. The packaged binary includes the new 12-point built-in default.
 - README now documents source-only installation (no releases exist), first launch, controls, configuration, recovery, uninstall, and current limitations. Detailed usage/development/recovery guides and a labelled layout illustration are linked. No private desktop screenshot is published.
 - Example configuration validates with 39 bindings; local documentation links, shell syntax, and git whitespace checks pass. Latest implementation regression suite: 47 passing tests. Live walkthroughs support the features described; clean-machine installation and broader hardware validation have not been performed.
+
+## Floating stacking after pointer focus — 2026-09-16
+
+System Settings floated correctly but could be covered after pointer focus activated a tile. Added three bounded post-activation stacking repairs (150/400/800 ms), guarded by fresh foreground focus and cancellation for commands, dragging, or pause. These issue raises only, without requesting keyboard focus. The delayed-activation race is a working diagnosis pending live confirmation.
+
+50 tests passed across nine suites, including delayed repair, stale request cancellation, and fresh unmanaged foreground protection. Release build/signing succeeded. One window initially rejected recovery, then restored on retry; all recovery entries cleared before quitting. Updated build launched paused after resetting Accessibility. Live validation remains pending.
+
+## Accessibility icon investigation — 2026-09-16
+
+Issue #9: confirmed Launch Services and the running application both resolve to the repository dist/McTiler.app (no copy exists in /Applications or ~/Applications). CFBundleIconFile points to McTiler.icns; signature verification and iconset extraction passed for all ten standard/Retina representations. NSWorkspace and NSRunningApplication resolve branded artwork; the inspected NSWorkspace rendering includes a pale rounded border around the source artwork.
+
+Refreshed only McTiler registration and quit/reopened System Settings, preserving Accessibility permissions. A window-only screencapture attempt failed; visual confirmation in the Accessibility pane is pending. No confirmed packaging defect or claim of a completed fix. Documented targeted refresh steps in the README.
+
+## Empty-display pointer focus — 2026-09-16
+
+Issue #10 live snapshot confirmed unique assignments: external workspace 1 held four windows; built-in workspace 2 was empty. The shared menu-bar label reported globally focused workspace 1. Pointer polling required a window hit and therefore could not select an empty display.
+
+Added movement-driven display targeting before window hit testing, using display bounds. It retains pause/drag/keyboard-grace suppression and cancels stale focus/stacking requests when the display changes. Status now exposes focusedDisplay and display origins. All 53 tests passed, including the four-external-windows/empty-built-in sequence, stale AX focus, workspace targeting, stationary-pointer suppression, negative coordinates, and display removal. Live validation remains pending.
+
+## Live follow-up — 2026-09-16
+
+- User confirmed the empty-display targeting fix and requested closure of #10.
+- User visually confirmed the Accessibility icon after targeted registration refresh and reopening Settings; #9 is closed.
+- Floating stacking #8 remains unresolved: System Settings is marked floating and AXRaise returns success, but observed window order still places an overlapping iTerm window above it. The bounded delayed raises do not resolve this report. User explicitly rejected retaining floating-window keyboard focus as a workaround.
+- Cross-monitor mouse dragging is tracked separately in #11; keyboard movement works, but the reported mouse failure has not yet been diagnosed.
+- Fullscreen defaults and the active local configuration now use Option+Space. Latest regression run: 53 passing tests.

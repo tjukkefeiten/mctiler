@@ -15,7 +15,7 @@ physical US key positions.
 | Option + Control + arrows | Resize; right/down grow, left/up shrink |
 | Option + 1–9 | Switch workspace |
 | Option + Shift + 1–9 | Send focused window to workspace |
-| Option + Shift + Escape | Toggle fullscreen, raise, and focus |
+| Option + Space | Toggle fullscreen, raise, and focus |
 | Option + Control + Space | Toggle workspace floating |
 | Option + Control + F | Toggle McTiler fullscreen |
 | Option + Control + H / V | Set horizontal / vertical split |
@@ -75,7 +75,7 @@ while the workspace is floating. Switching back restores surviving tiles;
 individually floated windows stay floating. Drag or resize floating windows with
 normal macOS window controls.
 
-Option+Shift+Escape toggles fullscreen and requests keyboard focus for that
+Option+Space toggles fullscreen and requests keyboard focus for that
 window. Option+Control+F remains an equivalent shortcut. Fullscreen fills the
 display below the top menu bar, ignoring Dock-reserved space. It stays in the current workspace and restores the previous geometry on
 exit. Other ordinary windows are parked temporarily. Same-application dialogs
@@ -90,3 +90,10 @@ changes the focused monitor. Display UUIDs are included in `status` output.
 Disconnected monitors' workspaces remain separate and can be opened on the
 remaining display; preferred assignments are retained for reconnection.
 
+
+With focus follows mouse enabled, moving the pointer onto a display selects that
+display for workspace commands even when it has no managed windows. The menu-bar
+number shows the globally focused workspace; macOS may show that same status
+item on both displays. It is not a separate workspace label for each display.
+`mctiler status` reports `focusedDisplay`, display coordinates, and the distinct
+`visibleWorkspaces` mapping for verification.
