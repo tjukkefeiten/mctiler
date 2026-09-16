@@ -152,3 +152,31 @@ Added movement-driven display targeting before window hit testing, using display
 - Floating stacking #8 remains unresolved: System Settings is marked floating and AXRaise returns success, but observed window order still places an overlapping iTerm window above it. The bounded delayed raises do not resolve this report. User explicitly rejected retaining floating-window keyboard focus as a workaround.
 - Cross-monitor mouse dragging is tracked separately in #11; keyboard movement works, but the reported mouse failure has not yet been diagnosed.
 - Fullscreen defaults and the active local configuration now use Option+Space. Latest regression run: 53 passing tests.
+
+## Cross-monitor drag to empty workspace — 2026-09-16
+
+Issue #11: drag completion previously required another tile to swap with, so an empty destination display always rejected the drop. Added a shared drop-completion path for occupied-tile swaps and transfers to another display’s empty tiled workspace. Captured display geometry and visible workspace assignments are checked before mutation, alongside the tile layout. Focus follows the transferred window.
+
+58 tests passed, including empty-display transfer, occupied-display swap through the same completion handler, duplicate release, invalid/content/resize drops, negative coordinates, changed destination workspace, new windows, and display removal. Live validation remains pending. Native drags that also resize the window remain rejected; this may need further compatibility work for apps that resize when crossing to a smaller display.
+
+### Cross-monitor drag follow-up
+
+The user reported that empty-monitor transfer still failed. Status confirmed the app was running with an empty built-in workspace 9. Found a controller integration defect: every app-activation notification called schedule(displays:), which unconditionally cancelled a pending drag even with identical display geometry. Cancellation now occurs only when the actual display list changes. Added lastDrag diagnostics for candidate capture, cancellation, final geometry, layout/workspace/display invariants, and drop outcome. The 58-test suite passes and the release build succeeded; live confirmation is pending.
+
+### Cross-monitor return-drag follow-up
+
+User clarified that the native window follows the pointer across displays and snaps back on release. Latest lastDrag was an ordinary no-movement click, so it did not capture the failed return drag. Added a bounded recentDrags history for actual geometry-changing attempts. Drop evaluation now waits 120 ms after mouse-up while layout remains suspended; sessions carry unique IDs to prevent stale completions. Cross-display native size changes are accepted only with an interior grab and window translation matching the pointer (or display clamping). Ordinary edge resize/content drags remain rejected.
+
+60 tests passed, including transfer to another display followed by a resized return swap and rejection of mismatched translations/edge resizing. Live cause and reliability still need confirmation.
+
+### Cross-display insertion and variable grab offsets (2026-09-16)
+
+Live diagnostics recorded rejected drops with unchanged display/workspace/layout
+snapshots but `nativeMove: false` after window size changes. The user also
+confirmed cross-display swaps were unwanted: returning a fourth window should
+restore four tiles. Cross-display drops now insert into the destination workspace
+(including occupied tiles and gaps); same-workspace drops still swap. A resized
+cross-display move may retain an interior title-bar grab with a changed horizontal
+offset instead of exact translation. Start points are now retained in diagnostics.
+All 62 tests pass, including four-window round trips, occupied-destination insertion,
+changed grab offsets, and same-workspace swaps. Live verification remains pending.

@@ -4,18 +4,18 @@
 
 # McTiler
 
-A macOS tiling window manager inspired by i3, awesome, and AeroSpace. Arrange windows in quadrants, switch numbered workspaces with Option shortcuts, and move between tiling and floating from a small menu-bar app.
+A macOS tiling window manager inspired by i3, awesome, and AeroSpace. Arrange windows in quadrants, switch numbered workspaces with Option shortcuts, drag windows between monitors, and toggle tiling, floating, and fullscreen from a small menu-bar app.
 
 - **Automatic tiling:** four quadrants, then subdivide the bottom-right tile.
 - **Focus follows mouse:** move into a window and type without clicking.
-- **Drag to rearrange:** drag a title bar onto another tile to swap positions.
+- **Drag to rearrange:** swap tiles within a workspace, or move windows between monitors and retile the destination.
 - **Fullscreen in place:** fill the display below the menu bar without creating a native macOS Space.
 - **Workspaces 1–9:** the menu-bar icon shows the active number.
 - **Configurable:** split layouts, floating windows, application rules, and 12-point inner gaps.
 
 [Install](#install-from-source) · [Controls](#everyday-controls) · [Configuration](#configuration) · [Usage guide](docs/usage.md) · [Report an issue](https://github.com/tjukkefeiten/mctiler/issues)
 
-McTiler is in early development. Single-display tiling, fullscreen focus, pointer focus, and tile dragging have been tested interactively. Cross-display behavior has automated coverage but still needs broader live validation. See [test evidence and limitations](docs/validation.md).
+McTiler is in early development. Single-display tiling, fullscreen focus, pointer focus, and tile dragging have been tested interactively. Cross-monitor insertion and return to four-tile layouts have also been tested interactively. Some title-bar grabs near the top edge still get rejected; broader multi-monitor validation is ongoing. See [test evidence and limitations](docs/validation.md).
 
 ## Install from source
 
@@ -70,7 +70,7 @@ Use one native macOS desktop per display for this version; McTiler manages its o
 
 One window fills the usable area. Two share columns. Window three splits the left column; window four splits the right. Window five splits only bottom-right. Later windows split the newest tile with alternating orientations. Floating windows do not occupy tiled positions.
 
-Drag a window by its title bar and release the pointer inside another tile's original position to swap them. Focus follows the moved window. Drops in gaps or outside eligible tiles restore the layout; Escape cancels the swap. Floating windows move normally. Explicit splits, resizing, movement, or a tile swap put the workspace into manual layout so your changes persist for the session.
+Drag a window by its title bar and release the pointer inside another tile's original position in the same workspace to swap them. Dropping onto the usable area of another display inserts the window into that display's visible workspace and reapplies its layout, even when the pointer is over another window. Returning a fourth window restores four quadrants in an automatic workspace. Focus follows the moved window. Drops in gaps within the same workspace or outside eligible displays restore the layout; Escape cancels the swap. Floating windows move normally. Explicit splits, resizing, movement, or a tile swap put the workspace into manual layout so your changes persist for the session.
 
 Move the mouse into a visible window to focus it. A stationary pointer does not undo keyboard focus, and dragging suppresses pointer focus. **Option + Space** toggles fullscreen and keyboard focus; press again to restore the previous layout. Fullscreen reserves the top menu bar and stays in the same workspace. Menu-bar auto-hide still follows your macOS setting.
 
@@ -189,7 +189,7 @@ app copy you use and whether Finder displays the expected icon.
 - Complete Dock suppression is unavailable. The experimental option reports this and does not change Dock preferences. The Dock can appear over McTiler fullscreen. See [Dock feasibility](docs/dock-feasibility.md).
 - Virtual workspaces park inactive windows near a screen edge; a narrow strip can remain visible. Some display arrangements or apps reject parking.
 - App minimum sizes and Accessibility support affect placement, focus, and stacking.
-- Cross-display swaps and recovery need broader hardware testing. There is no drag-target highlight yet.
+- Cross-display transfers and recovery need broader hardware testing. There is no drag-target highlight yet.
 - Layout trees and workspace assignments for individual windows are not saved across app restarts. Configuration and the recovery journal are saved.
 
 ## Recovery and uninstall

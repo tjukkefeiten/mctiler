@@ -15,6 +15,9 @@ final class Controller {
     var onBindings: (([String: String]) throws -> Void)?
     var onQuit: (() -> Void)?
     private var tileDrag: TileDrag?
+    private var pendingDrop: UUID?
+    private var dragHistory: [[String: Any]] = []
+    private var dragDiagnostics: [String: Any] = ["event": "none"]
     private var dragMonitor: Any?
     private let pointerFocus = PointerFocus()
     private var pointerTimer: DispatchSourceTimer?
@@ -39,7 +42,7 @@ final class Controller {
         dragMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .keyDown]) { [weak self] event in
             guard let self else { return }
             if event.type == .keyDown {
-                if event.keyCode == 53 { self.queue.async { self.tileDrag = nil } }
+                if event.keyCode == 53 { self.queue.async { self.tileDrag = nil; self.dragDiagnostics = ["event": "cancelled: Escape"] } }
                 return
             }
             guard let point = event.cgEvent?.location else { return }
@@ -69,7 +72,17 @@ final class Controller {
         }
     }
     func schedule(displays: [Display]? = nil) {
-        if let displays { queue.async { self.tileDrag = nil; self.desktop.updateDisplays(displays); self.reconciler.resetFailures() } }
+        if let displays {
+            queue.async {
+                // App activation/launch notifications also supply the display
+                // list. They must not cancel a native drag on unchanged screens.
+                guard self.desktop.displays != displays else { return }
+                if self.tileDrag != nil { self.dragDiagnostics = ["event": "cancelled: display geometry changed"] }
+                self.tileDrag = nil
+                self.desktop.updateDisplays(displays)
+                self.reconciler.resetFailures()
+            }
+        }
         guard !pending else { return }; pending = true
         DispatchQueue.main.asyncAfter(deadline: .now()+0.12) {
             self.queue.async {
@@ -82,7 +95,11 @@ final class Controller {
     func execute(_ args: [String]) -> Response {
         do {
             let command = try Command.parse(args)
-            if case .status = command {} else { focusCoordinator.cancel(); stackingCoordinator.cancel(); pointerFocus.reset(); tileDrag = nil }
+            if case .status = command {} else {
+                focusCoordinator.cancel(); stackingCoordinator.cancel(); pointerFocus.reset()
+                if tileDrag != nil { dragDiagnostics = ["event": "cancelled: command"] }
+                tileDrag = nil
+            }
             switch command {
             case .status: return Response(message: statusJSON())
             case .pause:
@@ -171,31 +188,55 @@ final class Controller {
     }
     private func handleDrag(down: Bool, point: CGPoint) {
         if down {
+            dragDiagnostics = ["event": "mouse down: no eligible tile", "point": [point.x, point.y]]
             tileDrag = nil
+            pendingDrop = nil
             focusCoordinator.cancel()
             stackingCoordinator.cancel()
             guard !paused, MacWindowAdapter.trusted,
                   let source = adapter.window(at: point), desktop.isDraggableTile(source),
                   let frame = lastSnapshot.windows.first(where: { $0.id == source })?.frame else { return }
-            tileDrag = TileDrag(source: source, originalFrame: frame, slots: desktop.tileSlots())
+            tileDrag = TileDrag(source: source, originalFrame: frame, slots: desktop.tileSlots(), visibleWorkspaces: desktop.visible, displays: desktop.displays, startPoint: (Double(point.x), Double(point.y)))
+            dragDiagnostics = ["event": "drag candidate", "source": source, "originalFrame": [frame.x, frame.y, frame.width, frame.height], "startPoint": [point.x, point.y]]
             return
         }
-        guard let drag = tileDrag else { return }
+        guard let drag = tileDrag, pendingDrop != drag.sessionID else { return }
+        pendingDrop = drag.sessionID
+        // The global mouse-up callback may precede the app's final AX frame.
+        // Keep layout suspended until the native move has finished processing.
+        queue.asyncAfter(deadline: .now()+0.12) { [weak self] in
+            guard let self, self.tileDrag?.sessionID == drag.sessionID else { return }
+            self.finishDrag(drag, point: point)
+        }
+    }
+    private func finishDrag(_ drag: TileDrag, point: CGPoint) {
         tileDrag = nil
+        pendingDrop = nil
         guard !paused, MacWindowAdapter.trusted else { return }
         let snapshot = adapter.snapshot(); lastSnapshot = snapshot
         reconciler.ingest(snapshot, allowFocus: false)
-        var swapped = false
-        if desktop.tileSlots() == drag.slots,
-           let frame = snapshot.windows.first(where: { $0.id == drag.source })?.frame,
-           let destination = drag.destination(x: point.x, y: point.y, finalFrame: frame) {
-            swapped = desktop.swapTiles(drag.source, destination)
+        var moved = false
+        dragDiagnostics["event"] = "mouse up: source missing"
+        if let frame = snapshot.windows.first(where: { $0.id == drag.source })?.frame {
+            dragDiagnostics["dropPoint"] = [point.x, point.y]
+            dragDiagnostics["finalFrame"] = [frame.x, frame.y, frame.width, frame.height]
+            dragDiagnostics["nativeMove"] = drag.isWindowMove(finalFrame: frame, dropPoint: (Double(point.x), Double(point.y)))
+            dragDiagnostics["layoutUnchanged"] = desktop.tileSlots() == drag.slots
+            dragDiagnostics["workspacesUnchanged"] = desktop.visible == drag.visibleWorkspaces
+            dragDiagnostics["displaysUnchanged"] = desktop.displays == drag.displays
+            moved = desktop.completeTileDrag(drag, x: point.x, y: point.y, finalFrame: frame)
+            dragDiagnostics["event"] = moved ? "drop accepted" : "drop rejected"
+        }
+        if let frame = snapshot.windows.first(where: { $0.id == drag.source })?.frame,
+           !frame.approximately(drag.originalFrame) {
+            dragHistory.append(dragDiagnostics)
+            if dragHistory.count > 8 { dragHistory.removeFirst() }
         }
         reconciler.resetFailures()
         pointerFocus.reset()
         focusGrace = Date().addingTimeInterval(0.6); pointerGrace = focusGrace
         applyLayout(snapshot)
-        if swapped { focusCurrentWindow() }
+        if moved { focusCurrentWindow() }
         publish()
     }
     private func pollPointer() {
@@ -295,6 +336,8 @@ final class Controller {
             "dockSuppression": ["requested": config.suppressDock, "available": DockSuppression.available, "explanation": DockSuppression.explanation],
             "recoveryEntries": adapter.journal.entries.count,
             "stacking": adapter.stackingDiagnostics(),
+            "lastDrag": dragDiagnostics,
+            "recentDrags": dragHistory,
             "windowStates": desktop.windows.values.sorted { $0.id < $1.id }.map {
                 ["id": $0.id, "bundle": $0.bundle, "workspace": $0.workspace,
                  "floating": $0.floating, "minimized": $0.minimized,

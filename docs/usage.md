@@ -24,17 +24,24 @@ physical US key positions.
 | Option + Control + Escape | Pause and restore windows |
 
 Drag a tiled window by its title bar and release the pointer inside another
-tile to swap their positions. This also works between visible workspaces on
-different displays. Tile sizes, gaps, and split weights are preserved; the
+tile in the same workspace to swap their positions. Dropping onto another
+display inserts the window into its visible workspace and applies that workspace’s
+layout. Existing windows remain there; returning a fourth window restores four
+quadrants in an automatic workspace. Cross-display drops also work in gaps.
+For swaps, tile sizes, gaps, and split weights are preserved; the
 involved workspaces switch to manual layout. The moved window keeps focus.
 Layout writes wait until you release the mouse, so the window can move freely.
-The destination is the tile's original layout slot, even when the dragged
+For same-workspace swaps, the destination is the tile's original layout slot, even when the dragged
 window covers it; there is no drop-target highlight in this version.
 
-Drops into gaps, outside tiles, or after the layout changes restore the original
+Drops into gaps within the same workspace, outside eligible destinations, or after the layout changes restore the original
 arrangement. Escape cancels the swap. Dragging content or resizing does not swap
 tiles. Floating windows retain normal movement; fullscreen windows do not take
 part in tile swaps.
+
+Known issue: a cross-monitor drag that changes the window’s size may be rejected
+when grabbed very close to the title bar’s top edge. Grab slightly lower as a
+workaround; tracked in [issue #11](https://github.com/tjukkefeiten/mctiler/issues/11).
 
 Focus follows the mouse by default: moving into a visible managed window gives
 it keyboard focus without clicking. Hit testing respects overlapping windows.
