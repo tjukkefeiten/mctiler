@@ -5,7 +5,7 @@ import Foundation
 final class ConfigurationTests {
     @Test func testAllDefaultHotkeysUseOptionAndLeaveCommandAvailable() throws {
         let bindings = Configuration.defaults.bindings
-        #expect(bindings.count == 39)
+        #expect(bindings.count == 43)
         for key in bindings.keys {
             let hotkey = try Hotkey.parse(key)
             #expect(hotkey.modifiers & 2048 != 0)

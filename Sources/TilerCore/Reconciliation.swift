@@ -43,6 +43,7 @@ public final class Reconciler {
         self.desktop = desktop; self.adapter = adapter; self.configuration = configuration
     }
     public func ingest(_ snapshot: WindowSnapshot, allowFocus: Bool = true) {
+        desktop.hideInactiveScratchpads()
         let live = Set(snapshot.windows.map(\.id))
         if live != lastObservedWindows { stackingDirty = true }
         lastObservedWindows = live
@@ -62,7 +63,7 @@ public final class Reconciler {
             if observed.minimized || observed.nativeFullscreen {
                 if let name = desktop.windows[observed.id]?.workspace, desktop.workspaces[name]?.fullscreen == observed.id { desktop.workspaces[name]?.fullscreen = nil }
             }
-            if let state = desktop.windows[observed.id], let workspace = desktop.workspaces[state.workspace],
+            if let state = desktop.windows[observed.id], state.scratchpad?.hidden != true, let workspace = desktop.workspaces[state.workspace],
                desktop.visible.values.contains(state.workspace), workspace.fullscreen == nil,
                state.floating || workspace.floating,
                expected[observed.id].map({ !$0.approximately(observed.frame) }) ?? true {
@@ -77,9 +78,8 @@ public final class Reconciler {
         // its workspace; polling must not bounce back to the old workspace.
         if allowFocus, focusChanged, let focused = snapshot.focused, focused != desktop.focusedWindow { desktop.focus(focused) }
         for workspace in desktop.workspaces.values {
-            if workspace.focused == nil || desktop.windows[workspace.focused!].map({ $0.minimized || $0.nativeFullscreen }) ?? true {
-                workspace.focused = workspace.tree.windows.first { desktop.windows[$0].map { !$0.minimized && !$0.nativeFullscreen } ?? false }
-                workspace.selected = workspace.focused.flatMap { workspace.tree.leaf($0)?.id }
+            if workspace.focused == nil || desktop.windows[workspace.focused!].map({ $0.minimized || $0.nativeFullscreen || $0.scratchpad?.hidden == true }) ?? true {
+                desktop.restoreWorkspaceFocus(workspace)
             }
         }
     }

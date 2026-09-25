@@ -31,7 +31,9 @@ public struct Configuration {
             "alt-space": "fullscreen", "alt-ctrl-space": "workspace-floating",
             "alt-ctrl-f": "fullscreen", "alt-ctrl-h": "split horizontal", "alt-ctrl-v": "split vertical",
             "alt-ctrl-p": "select parent", "alt-ctrl-c": "select child",
-            "alt-ctrl-r": "reload", "alt-ctrl-escape": "pause"
+            "alt-ctrl-r": "reload", "alt-ctrl-escape": "pause",
+            "alt-shift-s": "scratchpad move", "alt-s": "scratchpad show",
+            "alt-ctrl-s": "scratchpad next", "alt-ctrl-shift-s": "scratchpad release"
         ]) { _, new in new }
         return config
     }

@@ -56,6 +56,10 @@ alt-ctrl-p = "select parent"
 alt-ctrl-c = "select child"
 alt-ctrl-r = "reload"
 alt-ctrl-escape = "pause"
+alt-shift-s = "scratchpad move"
+alt-s = "scratchpad show"
+alt-ctrl-s = "scratchpad next"
+alt-ctrl-shift-s = "scratchpad release"
 
 # Display IDs are UUIDs reported by `mctiler status`.
 # Multiple workspaces can prefer the same monitor; the first numbered assignment
