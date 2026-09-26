@@ -53,6 +53,7 @@ public struct WindowState: Codable {
     public var nativeFullscreen: Bool = false
     public var dialog = false
     public var bundle = ""
+    public var scratchpad: ScratchpadState?
     public init(id: String, workspace: String, floating: Bool, frame: Rect) {
         self.id = id; self.workspace = workspace; self.floating = floating; self.floatingFrame = frame
     }
@@ -70,7 +71,7 @@ public final class Workspace: Codable {
     public var fullscreen: String?
     public var preferredDisplay: String?
     public init(_ name: String) { self.name = name }
-    fileprivate func refreshAutomaticLayout(windows: [String: WindowState]) {
+    func refreshAutomaticLayout(windows: [String: WindowState]) {
         guard automaticLayout else { return }
         let tiled = insertionOrder.filter { id in
             guard let state = windows[id] else { return false }
@@ -112,6 +113,8 @@ public final class Desktop {
     public var displays: [Display] = []
     public var visible: [String: String] = [:] // display ID -> workspace
     public var focusedDisplay: String?
+    public internal(set) var scratchpadOrder: [String] = []
+    var lastScratchpadShown: String?
     public var innerGap = 12.0
     public var outerGap = 8.0
     public init() { for n in 1...9 { workspaces[String(n)] = Workspace(String(n)) } }
@@ -139,6 +142,7 @@ public final class Desktop {
             }
         }
         if focusedDisplay == nil || !newIDs.contains(focusedDisplay!) { focusedDisplay = new.first?.id }
+        hideInactiveScratchpads()
     }
     public func switchWorkspace(_ name: String) throws {
         guard let workspace = workspaces[name], let display = focusedDisplay else { throw TilerError.message("Unknown workspace or no display") }
@@ -147,6 +151,7 @@ public final class Desktop {
             visible[display] = name
             if workspace.preferredDisplay == nil || displays.contains(where: { $0.id == workspace.preferredDisplay }) { workspace.preferredDisplay = display }
         }
+        hideInactiveScratchpads()
     }
     public func addWindow(_ id: String, frame: Rect, floating: Bool = false, workspace name: String? = nil, focus: Bool = true) {
         guard windows[id] == nil, let workspace = name.flatMap({ workspaces[$0] }) ?? current else { return }
@@ -170,22 +175,27 @@ public final class Desktop {
     }
     public func removeWindow(_ id: String) {
         guard let window = windows.removeValue(forKey: id), let workspace = workspaces[window.workspace] else { return }
+        removeFromWorkspace(id, workspace: workspace)
+        scratchpadOrder.removeAll { $0 == id }
+        if lastScratchpadShown == id { lastScratchpadShown = nil }
+    }
+    private func removeFromWorkspace(_ id: String, workspace: Workspace) {
         workspace.tree.remove(id)
         workspace.insertionOrder.removeAll { $0 == id }
         workspace.refreshAutomaticLayout(windows: windows)
         if workspace.fullscreen == id { workspace.fullscreen = nil }
-        if workspace.focused == id { workspace.focused = workspace.tree.windows.first; workspace.selected = workspace.focused.flatMap { workspace.tree.leaf($0)?.id } }
+        if workspace.focused == id { restoreWorkspaceFocus(workspace) }
         if let selected = workspace.selected, workspace.tree.find(selected) == nil { workspace.selected = workspace.focused.flatMap { workspace.tree.leaf($0)?.id } }
     }
     public func focus(_ id: String) {
-        guard let state = windows[id], !state.minimized, !state.nativeFullscreen, let workspace = workspaces[state.workspace] else { return }
+        guard let state = windows[id], !state.minimized, !state.nativeFullscreen, state.scratchpad?.hidden != true, let workspace = workspaces[state.workspace] else { return }
         try? switchWorkspace(state.workspace)
         if workspace.fullscreen != id && !(state.dialog && state.bundle == workspace.fullscreen.flatMap { windows[$0]?.bundle }) { workspace.fullscreen = nil }
         workspace.focused = id; workspace.selected = workspace.tree.leaf(id)?.id
     }
     public func layout(_ workspace: Workspace, on display: Display) -> [String: Rect] {
         workspace.refreshAutomaticLayout(windows: windows)
-        let members = windows.values.filter { $0.workspace == workspace.name && !$0.minimized && !$0.nativeFullscreen }
+        let members = windows.values.filter { $0.workspace == workspace.name && !$0.minimized && !$0.nativeFullscreen && $0.scratchpad?.hidden != true }
         if let full = workspace.fullscreen, members.contains(where: { $0.id == full }) {
             var frames = [full: display.fullscreen]
             for member in members where member.dialog && member.bundle == windows[full]?.bundle && member.id != full {
@@ -200,6 +210,7 @@ public final class Desktop {
     }
     public func toggleFloating() throws {
         guard let id = focusedWindow else { throw TilerError.message("No focused window") }
+        guard windows[id]?.scratchpad == nil else { throw TilerError.message("Use scratchpad release before changing a scratchpad window's floating mode") }
         if let workspace = current, let display = displays.first(where: { $0.id == focusedDisplay }), !workspace.floating, windows[id]?.floating == false,
            let frame = layout(workspace, on: display)[id] { windows[id]?.floatingFrame = frame }
         current?.fullscreen = nil
@@ -283,9 +294,15 @@ public final class Desktop {
         }
     }
     public func sendWindow(to name: String) throws {
-        guard let id = focusedWindow, let destination = workspaces[name], var window = windows[id] else { throw TilerError.message("No window or unknown workspace") }
+        guard let id = focusedWindow, workspaces[name] != nil else { throw TilerError.message("No window or unknown workspace") }
+        if windows[id]?.scratchpad != nil { try releaseScratchpad() }
+        try transferWindow(id, to: name)
+    }
+    func transferWindow(_ id: String, to name: String) throws {
+        guard let destination = workspaces[name], var window = windows[id], let source = workspaces[window.workspace] else { throw TilerError.message("No window or unknown workspace") }
         guard window.workspace != name else { return }
-        removeWindow(id); window.workspace = name; windows[id] = window
+        window.workspace = name; windows[id] = window
+        removeFromWorkspace(id, workspace: source)
         insert(Node(window: id), into: destination)
         destination.focused = id; destination.selected = destination.tree.leaf(id)?.id
     }
@@ -297,6 +314,7 @@ public final class Desktop {
         workspaces[name]?.preferredDisplay = displayID
         if let other { workspaces[other]?.preferredDisplay = source }
         focusedDisplay = displayID
+        hideInactiveScratchpads()
     }
 }
 

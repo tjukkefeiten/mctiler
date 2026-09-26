@@ -4,6 +4,7 @@ public enum Command {
     case focus(Direction), move(Direction), resize(Direction, Double), split(Axis), select(Bool)
     case workspace(String), send(String), moveWorkspace(String), focusDisplay(String)
     case floating, workspaceFloating, fullscreen, reload, pause, resume, status, recover, quit
+    case scratchpadMove, scratchpadShow, scratchpadNext, scratchpadRelease
     public static func parse(_ args: [String]) throws -> Command {
         guard let first = args.first else { throw TilerError.message("Missing command") }
         let tail = Array(args.dropFirst())
@@ -23,6 +24,14 @@ public enum Command {
             return first == "workspace" ? .workspace(tail[0]) : .send(tail[0])
         case ("move-workspace", 1): return .moveWorkspace(tail[0])
         case ("focus-display", 1): return .focusDisplay(tail[0])
+        case ("scratchpad", 1):
+            switch tail[0] {
+            case "move": return .scratchpadMove
+            case "show": return .scratchpadShow
+            case "next": return .scratchpadNext
+            case "release": return .scratchpadRelease
+            default: throw TilerError.message("scratchpad move|show|next|release")
+            }
         case ("floating", 0): return .floating
         case ("workspace-floating", 0): return .workspaceFloating
         case ("fullscreen", 0): return .fullscreen
@@ -49,6 +58,10 @@ public enum Command {
             guard desktop.displays.contains(where: { $0.id == id }) else { throw TilerError.message("Unknown display") }; desktop.focusedDisplay = id
         case .floating: try desktop.toggleFloating()
         case .workspaceFloating: try desktop.toggleWorkspaceFloating()
+        case .scratchpadMove: try desktop.moveToScratchpad()
+        case .scratchpadShow: try desktop.showScratchpad()
+        case .scratchpadNext: try desktop.showScratchpad(next: true)
+        case .scratchpadRelease: try desktop.releaseScratchpad()
         case .fullscreen:
             guard let workspace = desktop.current, let id = desktop.focusedWindow else { throw TilerError.message("No focused window") }
             workspace.fullscreen = workspace.fullscreen == id ? nil : id
@@ -64,6 +77,7 @@ public enum Command {
     mctiler workspace|send 1…9
     mctiler focus-display|move-workspace DISPLAY_ID
     mctiler floating | workspace-floating | fullscreen
+    mctiler scratchpad move|show|next|release
     mctiler check-config [PATH]
     mctiler check-hotkeys (pause management first)
     mctiler recover --standalone

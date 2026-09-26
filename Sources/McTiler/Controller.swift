@@ -338,9 +338,11 @@ final class Controller {
             "stacking": adapter.stackingDiagnostics(),
             "lastDrag": dragDiagnostics,
             "recentDrags": dragHistory,
+            "scratchpad": ["order": desktop.scratchpadOrder, "shownWindow": desktop.shownScratchpad ?? ""] as [String: Any],
             "windowStates": desktop.windows.values.sorted { $0.id < $1.id }.map {
                 ["id": $0.id, "bundle": $0.bundle, "workspace": $0.workspace,
                  "floating": $0.floating, "minimized": $0.minimized,
+                 "scratchpad": $0.scratchpad != nil, "scratchpadHidden": $0.scratchpad?.hidden ?? false,
                  "fullscreen": desktop.workspaces[$0.workspace]?.fullscreen == $0.id] as [String: Any]
             }
         ]

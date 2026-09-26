@@ -30,7 +30,7 @@ extension Desktop {
     }
 
     public func canFocusFromPointer(_ id: String) -> Bool {
-        guard let state = windows[id], !state.minimized, !state.nativeFullscreen,
+        guard let state = windows[id], !state.minimized, !state.nativeFullscreen, state.scratchpad?.hidden != true,
               let workspace = workspaces[state.workspace], visible.values.contains(state.workspace) else { return false }
         guard let full = workspace.fullscreen else { return true }
         return id == full || (state.dialog && state.bundle == windows[full]?.bundle)

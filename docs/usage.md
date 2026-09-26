@@ -22,6 +22,10 @@ physical US key positions.
 | Option + Control + P / C | Select parent / first child |
 | Option + Control + R | Reload configuration |
 | Option + Control + Escape | Pause and restore windows |
+| Option + Shift + S | Stash the focused window in the scratchpad |
+| Option + S | Show/hide a scratchpad window |
+| Option + Control + S | Show the next scratchpad window |
+| Option + Control + Shift + S | Release the focused scratchpad window |
 
 Drag a tiled window by its title bar and release the pointer inside another
 tile in the same workspace to swap their positions. Dropping onto another
@@ -104,3 +108,66 @@ number shows the globally focused workspace; macOS may show that same status
 item on both displays. It is not a separate workspace label for each display.
 `mctiler status` reports `focusedDisplay`, display coordinates, and the distinct
 `visibleWorkspaces` mapping for verification.
+
+## Scratchpad
+
+The scratchpad holds managed windows outside the normal tiled layout. It is
+global across workspaces and displays, with at most one scratchpad window shown
+at a time. Windows remain individually managed, so stashing one window does not
+hide the rest of its application.
+
+| Command | Behavior |
+| --- | --- |
+| `scratchpad move` | Stash and hide the focused window. Stashing an existing scratchpad window hides it without adding a duplicate. |
+| `scratchpad show` | Hide the scratchpad window if one is shown on the current workspace. Otherwise summon the most recently selected/stashed entry here, falling back to the first available entry. |
+| `scratchpad next` | Show the next available entry in insertion order, wrapping around. Minimized and native-fullscreen entries are skipped. With one eligible entry, keep it shown. |
+| `scratchpad release` | Remove the focused, shown window from the scratchpad and restore its previous individual tiled/floating mode on the current workspace. |
+
+All commands use the `mctiler` CLI prefix and can be assigned to custom bindings.
+No available entry produces an error rather than launching an application.
+To enable the defaults in an existing custom `[bindings]` table, add:
+
+```toml
+alt-shift-s = "scratchpad move"
+alt-s = "scratchpad show"
+alt-ctrl-s = "scratchpad next"
+alt-ctrl-shift-s = "scratchpad release"
+```
+
+### Placement and focus
+
+- A tiled window initially gets a centered floating rectangle using 60% of the
+  display's usable width and height. Already-floating windows retain their frame.
+- Native dragging/resizing of a shown scratchpad window is remembered. Summoning
+  it on another display centers its retained size, clamped to that display.
+- Showing focuses the window and uses ordinary floating-window stacking. It exits
+  McTiler fullscreen on the destination workspace. Hiding restores the prior
+  focused window when it is still eligible, otherwise another visible member.
+- When a scratchpad window's workspace becomes hidden or its display disconnects,
+  the scratchpad window becomes hidden too. Returning to that workspace does not
+  automatically show it. Focusing another display alone does not hide it; use
+  `scratchpad show` there to bring it over.
+- Hidden entries cannot be focused by pointer focus or stale AX focus reports.
+  They do not occupy tiles, even in a floating workspace or behind fullscreen.
+- Releasing on the same workspace preserves a manual tree slot. Summoning on a
+  different workspace transfers membership; release then uses that workspace's
+  layout. `send N` also releases a shown scratchpad window before moving it to N.
+  Use release before toggling its individual floating mode.
+
+### Lifetime and limitations
+
+Scratchpad membership and order are in-memory, like workspace layouts; they are
+not restored after restarting McTiler. Pause, Quit, and crash recovery restore
+scratchpad windows through the ordinary recovery journal. Pause/Resume in the
+same process retains membership, so resuming parks hidden entries again.
+
+Hidden entries use workspace parking, which can leave a narrow edge strip and can
+be rejected by some apps/display arrangements. Floating stacking has the same
+application-dependent limitations as other floating windows; it does not promise
+always-on-top behavior. Minimized and app-native fullscreen windows must be
+restored/exited before they can be summoned. Closing a window removes its entry.
+
+`mctiler status` reports the scratchpad insertion order and shown window ID, plus
+`scratchpad` and `scratchpadHidden` flags on each window state. Automated coverage
+is recorded in [validation](validation.md); live application/monitor validation
+is still pending.

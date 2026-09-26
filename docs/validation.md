@@ -180,3 +180,40 @@ cross-display move may retain an interior title-bar grab with a changed horizont
 offset instead of exact translation. Start points are now retained in diagnostics.
 All 62 tests pass, including four-window round trips, occupied-destination insertion,
 changed grab offsets, and same-workspace swaps. Live verification remains pending.
+
+## Scratchpad — 2026-09-26
+
+Added `scratchpad move|show|next|release`, four Option-based default shortcuts,
+session-local insertion order, and per-window hidden/original-floating state.
+Hidden windows retain a tree leaf but do not occupy tiles or participate in
+focus/stacking. Summoning moves an entry to the current workspace as a floating
+window; switching away hides it, cycling skips minimized/native-fullscreen
+entries, and release restores individual tiled/floating mode. Ordinary `send`
+releases the entry before transferring it. Status exposes membership and order.
+
+All 74 tests pass, including 12 scratchpad tests covering automatic compaction,
+manual geometry restoration, floating movement, stale AX focus and parking
+geometry, cross-monitor transfer, cycling/closure, workspace switching,
+fullscreen/workspace-floating interactions, display removal, partial enumeration,
+stacking, focus restoration, and command/config validation. Tested with Apple
+Swift 6.4 using `bash scripts/test.sh --build-system native` to avoid the default
+backend's incremental `TestingMacros` loading problem on this toolchain.
+
+Release packaging succeeded with `bash scripts/build-app.sh`. App and CLI strict
+signature verification passed, the app plist passed validation, and the shipped
+example configuration validates with 43 bindings and one application rule.
+
+Live checks remain pending:
+
+1. Stash a Terminal window, summon/hide it, and verify typing reaches it when shown
+   and returns to the prior window after hiding. Repeat with another app.
+2. Stash several windows, cycle, close one, and minimize/restore another. Verify
+   there is at most one shown scratchpad entry.
+3. Summon on different workspaces and displays; resize/drag it, hide/show, then
+   release. Check both originally tiled and originally floating windows.
+4. Exercise fullscreen and whole-workspace floating, plus display disconnection.
+5. Pause/Resume and Quit with hidden entries; confirm windows remain recoverable.
+   With disposable windows, also exercise crash/standalone recovery.
+
+Scratchpad membership is not persisted across app restarts. Existing parking and
+floating-stacking limitations still apply.

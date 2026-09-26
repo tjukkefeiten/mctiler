@@ -11,6 +11,7 @@ A macOS tiling window manager inspired by i3, awesome, and AeroSpace. Arrange wi
 - **Drag to rearrange:** swap tiles within a workspace, or move windows between monitors and retile the destination.
 - **Fullscreen in place:** fill the display below the menu bar without creating a native macOS Space.
 - **Workspaces 1–9:** the menu-bar icon shows the active number.
+- **Scratchpad:** stash windows, summon a floating window on the current workspace, and cycle through stored windows.
 - **Configurable:** split layouts, floating windows, application rules, and 12-point inner gaps.
 
 [Install](#install-from-source) · [Controls](#everyday-controls) · [Configuration](#configuration) · [Usage guide](docs/usage.md) · [Report an issue](https://github.com/tjukkefeiten/mctiler/issues)
@@ -94,6 +95,10 @@ Option is spelled `alt` in configuration. Keys refer to physical US keyboard pos
 | Option + Control + P / C | Select parent / first child container |
 | Option + Control + R | Reload configuration |
 | Option + Control + Escape | Pause and restore windows |
+| Option + Shift + S | Move the focused window to the scratchpad and hide it |
+| Option + S | Show/hide a scratchpad window on the current workspace |
+| Option + Control + S | Show the next scratchpad window |
+| Option + Control + Shift + S | Release the focused scratchpad window to normal management |
 
 Individual floating has no default shortcut. Toggle it with the CLI or assign a custom binding:
 
@@ -105,6 +110,28 @@ Individual floating has no default shortcut. Toggle it with the CLI or assign a 
 ```
 
 Resume from the menu or CLI: pausing releases all shortcuts.
+
+### Scratchpad
+
+Focus a window and press **Option + Shift + S** to stash it. **Option + S** summons
+it as a floating window on the current workspace/display; press again to hide it.
+Use **Option + Control + S** to cycle through multiple stored windows. Only one
+scratchpad window is shown at a time. **Option + Control + Shift + S** releases
+the focused scratchpad window on its current workspace, restoring its individual
+tiled/floating mode. The CLI equivalents are:
+
+```sh
+./dist/mctiler scratchpad move
+./dist/mctiler scratchpad show
+./dist/mctiler scratchpad next
+./dist/mctiler scratchpad release
+```
+
+Scratchpad membership lasts for the app session. Hidden windows use the same
+parking mechanism as inactive workspaces; Pause/Quit restores them along with
+other managed windows. See [scratchpad behavior and limitations](docs/usage.md#scratchpad).
+Existing configs with a `[bindings]` table need the four new bindings added
+manually from `config.example.toml`; reload after editing.
 
 ## Configuration
 
