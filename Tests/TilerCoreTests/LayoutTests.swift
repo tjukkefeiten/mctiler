@@ -118,6 +118,25 @@ final class LayoutTests {
         #expect(frames["b"]!.width > frames["a"]!.width)
         try d.move(.left); #expect(d.current!.tree.windows == ["b", "a"])
     }
+    @Test func testThreeWindowKeyboardResizePreservesStackedPair() throws {
+        for direction in [Direction.left, .right, .up, .down] {
+            let d = desktop()
+            for id in ["a", "b", "c"] { add(d, id) }
+            d.focus("a")
+            let workspace = d.current!
+            let columns = workspace.tree.children.map(\.id)
+            let pair = workspace.tree.children[0]
+            let children = pair.children.map(\.id)
+            try d.resize(direction, amount: 50)
+            let frames = d.layout(workspace, on: screen)
+            #expect(workspace.tree.children.map(\.id) == columns)
+            #expect(pair.axis == .vertical)
+            #expect(pair.children.map(\.id) == children)
+            #expect(frames["a"]!.x == frames["c"]!.x)
+            #expect(frames["a"]!.maxY <= frames["c"]!.y)
+            #expect(frames["b"]!.x >= frames["a"]!.maxX)
+        }
+    }
     @Test func testWorkspaceSendAndVisibleWorkspaceSwitch() throws {
         let d = desktop(); add(d, "a"); add(d, "b"); try d.sendWindow(to: "2")
         #expect(d.current!.name == "1"); #expect(d.windows["b"]!.workspace == "2")

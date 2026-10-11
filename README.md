@@ -192,6 +192,7 @@ app copy you use and whether Finder displays the expected icon.
 - Virtual workspaces park inactive windows near a screen edge; a narrow strip can remain visible. Some display arrangements or apps reject parking.
 - App minimum sizes and Accessibility support affect placement, focus, and stacking.
 - Cross-display transfers and recovery need broader hardware testing. There is no drag-target highlight yet.
+- Sleep/wake recovery retains workspace state while displays and windows settle, with a ten-second fallback for missing monitors/apps. Live multi-monitor validation is pending; see [sleep and wake](docs/usage.md#sleep-and-wake).
 - Layout trees and workspace assignments for individual windows are not saved across app restarts. Configuration and the recovery journal are saved.
 
 ## Recovery and uninstall

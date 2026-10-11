@@ -42,7 +42,7 @@ public final class Reconciler {
     public init(desktop: Desktop, adapter: WindowAdapter, configuration: Configuration) {
         self.desktop = desktop; self.adapter = adapter; self.configuration = configuration
     }
-    public func ingest(_ snapshot: WindowSnapshot, allowFocus: Bool = true) {
+    public func ingest(_ snapshot: WindowSnapshot, allowFocus: Bool = true, allowFloatingUpdates: Bool = true) {
         let live = Set(snapshot.windows.map(\.id))
         if live != lastObservedWindows { stackingDirty = true }
         lastObservedWindows = live
@@ -62,7 +62,7 @@ public final class Reconciler {
             if observed.minimized || observed.nativeFullscreen {
                 if let name = desktop.windows[observed.id]?.workspace, desktop.workspaces[name]?.fullscreen == observed.id { desktop.workspaces[name]?.fullscreen = nil }
             }
-            if let state = desktop.windows[observed.id], let workspace = desktop.workspaces[state.workspace],
+            if allowFloatingUpdates, let state = desktop.windows[observed.id], let workspace = desktop.workspaces[state.workspace],
                desktop.visible.values.contains(state.workspace), workspace.fullscreen == nil,
                state.floating || workspace.floating,
                expected[observed.id].map({ !$0.approximately(observed.frame) }) ?? true {

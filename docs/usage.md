@@ -96,8 +96,36 @@ workspace with the target display's visible workspace. `focus-display DISPLAY_ID
 changes the focused monitor. Display UUIDs are included in `status` output.
 Disconnected monitors' workspaces remain separate and can be opened on the
 remaining display; preferred assignments are retained for reconnection.
+Each display remembers its last visible workspace, including when several
+workspaces prefer that display.
 
+### Locking, sleep, and wake
 
+System sleep suspends automatic layout, pointer focus, and drag handling while
+retaining window identities and workspace state. Screen locking and session
+deactivation also suspend management. Overlapping suspension reasons must all
+end before recovery starts. Screen locking uses unofficial macOS distributed
+notifications; three live lock/unlock cycles passed on the tested setup.
+On wake or unlock, McTiler waits for the
+known windows and displays to return and for display geometry to stay unchanged
+for one second. During this settling period, layout commands report that recovery
+is in progress; Status, Pause, Recover, and Quit remain available.
+
+After ten seconds, management can continue on the available displays if a monitor
+is still absent or an application closed. If no displays are available, it keeps
+waiting. A monitor returning later reclaims its last visible workspace; windows
+on its hidden workspaces keep their membership. A previously paused session stays
+paused. This is in-memory state, not persistence across app restarts.
+
+`mctiler status` includes `sleepWake.phase` (`sleeping`, `settling`, or `awake`),
+`lastResult`, `screenLocked`, `sessionInactive`, `lockCount`, and the missing
+display/window IDs from the last recovery check. Compare
+`windowStates` (window ID and workspace) and `visibleWorkspaces` before and after
+sleep to distinguish membership changes from misplaced windows. Actual sleep/wake,
+hidden workspace, and delayed monitor return validation remain pending;
+see [validation](validation.md).
+
+### Pointer display selection
 With focus follows mouse enabled, moving the pointer onto a display selects that
 display for workspace commands even when it has no managed windows. The menu-bar
 number shows the globally focused workspace; macOS may show that same status

@@ -25,6 +25,8 @@ final class Controller {
     private var focusGrace = Date.distantPast
     private var pointerGrace = Date.distantPast
     private var lastSnapshot = WindowSnapshot(windows: [])
+    private let sleepWake = SleepWakeRecovery()
+    private var preserveFloatingFrames = false
     private lazy var stackingCoordinator = StackingCoordinator { [weak self] delay, work in
         self?.queue.asyncAfter(deadline: .now()+delay, execute: work)
     }
@@ -74,6 +76,10 @@ final class Controller {
     func schedule(displays: [Display]? = nil) {
         if let displays {
             queue.async {
+                if self.sleepWake.suspended {
+                    self.sleepWake.observeDisplays(displays, at: ProcessInfo.processInfo.systemUptime)
+                    return
+                }
                 // App activation/launch notifications also supply the display
                 // list. They must not cancel a native drag on unchanged screens.
                 guard self.desktop.displays != displays else { return }
@@ -81,20 +87,87 @@ final class Controller {
                 self.tileDrag = nil
                 self.desktop.updateDisplays(displays)
                 self.reconciler.resetFailures()
+                self.preserveFloatingFrames = true
+                self.focusGrace = Date().addingTimeInterval(0.6)
             }
         }
         guard !pending else { return }; pending = true
         DispatchQueue.main.asyncAfter(deadline: .now()+0.12) {
             self.queue.async {
-                if !self.paused { self.reconcile() }
+                self.reconcile()
                 self.publish()
                 DispatchQueue.main.async { self.pending = false }
             }
         }
     }
+    private func beginSleepRecovery(sessionInactive: Bool = false, screenLocked: Bool = false) {
+        if screenLocked {
+            sleepWake.screenDidLock(displays: desktop.displays, windows: Set(desktop.windows.keys))
+        } else if sessionInactive {
+            sleepWake.sessionDidResignActive(displays: desktop.displays, windows: Set(desktop.windows.keys))
+        } else {
+            sleepWake.willSleep(displays: desktop.displays, windows: Set(desktop.windows.keys))
+        }
+        adapter.preserveMissingWindows = true
+        focusCoordinator.cancel(); stackingCoordinator.cancel(); pointerFocus.reset()
+        if tileDrag != nil { dragDiagnostics = ["event": "cancelled: system sleep"] }
+        tileDrag = nil; pendingDrop = nil
+    }
+    func systemWillSleep() {
+        queue.async {
+            self.beginSleepRecovery()
+            self.statusNote = "System sleeping; workspace state retained"
+            self.publish()
+        }
+    }
+    func sessionDidResignActive() {
+        queue.async {
+            self.beginSleepRecovery(sessionInactive: true)
+            self.statusNote = "Session inactive; workspace state retained"
+            self.publish()
+        }
+    }
+    func screenDidLock() {
+        queue.async {
+            self.beginSleepRecovery(screenLocked: true)
+            self.statusNote = "Screen locked; workspace state retained"
+            self.publish()
+        }
+    }
+    func screenDidUnlock(displays: [Display]) {
+        queue.async {
+            self.sleepWake.screenDidUnlock(displays: displays, at: ProcessInfo.processInfo.systemUptime)
+            self.adapter.prepareForWake()
+            self.statusNote = "Waiting for displays and windows after unlock"
+            self.publish()
+        }
+    }
+    func sessionDidBecomeActive(displays: [Display]) {
+        queue.async {
+            self.sleepWake.sessionDidBecomeActive(displays: displays, at: ProcessInfo.processInfo.systemUptime)
+            self.adapter.prepareForWake()
+            self.statusNote = self.sleepWake.sleeping ? "Waiting for system wake" : "Waiting for displays and windows after session activation"
+            self.publish()
+        }
+    }
+    func systemDidWake(displays: [Display]) {
+        queue.async {
+            // Also tolerate launching mid-wake or a missing will-sleep event.
+            if !self.sleepWake.suspended { self.beginSleepRecovery() }
+            self.sleepWake.didWake(displays: displays, at: ProcessInfo.processInfo.systemUptime)
+            self.adapter.prepareForWake()
+            self.statusNote = "Waiting for displays and windows after wake"
+            self.publish()
+        }
+    }
     func execute(_ args: [String]) -> Response {
         do {
             let command = try Command.parse(args)
+            switch command {
+            case .status, .pause, .recover, .quit: break
+            default:
+                guard !sleepWake.suspended else { throw TilerError.message("Sleep/wake recovery in progress; retry when displays and windows have settled") }
+            }
             if case .status = command {} else {
                 focusCoordinator.cancel(); stackingCoordinator.cancel(); pointerFocus.reset()
                 if tileDrag != nil { dragDiagnostics = ["event": "cancelled: command"] }
@@ -141,7 +214,7 @@ final class Controller {
                 guard !paused else { throw TilerError.message("McTiler is paused; use resume") }
                 guard MacWindowAdapter.trusted else { paused = true; throw TilerError.message("Accessibility permission was revoked") }
                 let snapshot = adapter.snapshot()
-                reconciler.ingest(snapshot, allowFocus: Date() > focusGrace); lastSnapshot = snapshot
+                reconciler.ingest(snapshot, allowFocus: Date() > focusGrace, allowFloatingUpdates: !preserveFloatingFrames); lastSnapshot = snapshot
                 try command.apply(to: desktop)
                 focusGrace = Date().addingTimeInterval(0.6)
                 pointerGrace = focusGrace
@@ -156,10 +229,10 @@ final class Controller {
         (0..<3).contains { CGEventSource.buttonState(.combinedSessionState, button: CGMouseButton(rawValue: UInt32($0))!) }
     }
     private func focusCurrentWindow(fromPointer: Bool = false) {
-        guard !paused, let focused = desktop.focusedWindow else { return }
+        guard !paused, !sleepWake.suspended, let focused = desktop.focusedWindow else { return }
         stackingCoordinator.request(isCurrent: { [weak self] in
             guard let self else { return false }
-            return !self.paused && self.tileDrag == nil && !self.pointerButtonsDown &&
+            return !self.paused && !self.sleepWake.suspended && self.tileDrag == nil && !self.pointerButtonsDown &&
                 self.desktop.focusedWindow == focused && MacWindowAdapter.trusted
         }, restore: { [weak self] in
             guard let self else { return }
@@ -170,7 +243,7 @@ final class Controller {
             self.reportStackingFailures(self.reconciler.restoreStacking(force: true, foreground: snapshot))
         })
         focusCoordinator.request(focused, isCurrent: { [weak self] in
-            guard let self, !self.paused, self.desktop.focusedWindow == focused else { return false }
+            guard let self, !self.paused, !self.sleepWake.suspended, self.desktop.focusedWindow == focused else { return false }
             if fromPointer {
                 guard self.config.focusFollowsMouse, !self.pointerButtonsDown,
                       let point = CGEvent(source: nil)?.location,
@@ -193,7 +266,7 @@ final class Controller {
             pendingDrop = nil
             focusCoordinator.cancel()
             stackingCoordinator.cancel()
-            guard !paused, MacWindowAdapter.trusted,
+            guard !paused, !sleepWake.suspended, MacWindowAdapter.trusted,
                   let source = adapter.window(at: point), desktop.isDraggableTile(source),
                   let frame = lastSnapshot.windows.first(where: { $0.id == source })?.frame else { return }
             tileDrag = TileDrag(source: source, originalFrame: frame, slots: desktop.tileSlots(), visibleWorkspaces: desktop.visible, displays: desktop.displays, startPoint: (Double(point.x), Double(point.y)))
@@ -212,9 +285,9 @@ final class Controller {
     private func finishDrag(_ drag: TileDrag, point: CGPoint) {
         tileDrag = nil
         pendingDrop = nil
-        guard !paused, MacWindowAdapter.trusted else { return }
+        guard !paused, !sleepWake.suspended, MacWindowAdapter.trusted else { return }
         let snapshot = adapter.snapshot(); lastSnapshot = snapshot
-        reconciler.ingest(snapshot, allowFocus: false)
+        reconciler.ingest(snapshot, allowFocus: false, allowFloatingUpdates: !preserveFloatingFrames)
         var moved = false
         dragDiagnostics["event"] = "mouse up: source missing"
         if let frame = snapshot.windows.first(where: { $0.id == drag.source })?.frame {
@@ -245,7 +318,7 @@ final class Controller {
         if tileDrag != nil && !CGEventSource.buttonState(.combinedSessionState, button: .left) {
             handleDrag(down: false, point: point)
         }
-        let enabled = tileDrag == nil && !paused && config.focusFollowsMouse && !pointerButtonsDown && Date() > pointerGrace && MacWindowAdapter.trusted
+        let enabled = tileDrag == nil && !paused && !sleepWake.suspended && config.focusFollowsMouse && !pointerButtonsDown && Date() > pointerGrace && MacWindowAdapter.trusted
         guard let id = pointerFocus.update(x: point.x, y: point.y, enabled: enabled, moved: {
             if self.desktop.focusDisplayFromPointer(x: point.x, y: point.y) {
                 self.focusCoordinator.cancel()
@@ -277,18 +350,32 @@ final class Controller {
         }
     }
     private func reconcile() {
+        guard !sleepWake.sleeping, !paused || sleepWake.suspended else { return }
         guard MacWindowAdapter.trusted else {
             paused = true; try? DispatchQueue.main.sync { try onBindings?([:]) }
             statusNote = "Accessibility access lost; restore permission and choose Recover, then Resume"; return
         }
         let snapshot = adapter.snapshot(); lastSnapshot = snapshot
-        reconciler.ingest(snapshot, allowFocus: Date() > focusGrace)
+        if sleepWake.suspended {
+            guard sleepWake.finishIfReady(snapshot, at: ProcessInfo.processInfo.systemUptime) else {
+                statusNote = "Waiting after wake: \(sleepWake.missingDisplays.count) displays, \(sleepWake.missingWindows.count) windows"
+                return
+            }
+            adapter.preserveMissingWindows = false
+            desktop.updateDisplays(sleepWake.displays)
+            reconciler.resetFailures()
+            preserveFloatingFrames = true
+            pointerFocus.reset()
+            focusGrace = Date().addingTimeInterval(0.6); pointerGrace = focusGrace
+            if paused { statusNote = "Paused"; return }
+        }
+        reconciler.ingest(snapshot, allowFocus: Date() > focusGrace, allowFloatingUpdates: !preserveFloatingFrames)
         applyLayout(snapshot)
     }
     private func applyLayout(_ snapshot: WindowSnapshot) {
         // Native movement must finish before any managed frame or stacking writes.
         // Guard button state too: AX move notifications can precede mouse-down delivery.
-        guard !desktop.displays.isEmpty, tileDrag == nil, !pointerButtonsDown else { return }
+        guard !sleepWake.suspended, !desktop.displays.isEmpty, tileDrag == nil, !pointerButtonsDown else { return }
         let actual = Dictionary(uniqueKeysWithValues: snapshot.windows.map { ($0.id, $0.frame) })
         // Native fullscreen is not part of our workspace model. Avoid moving windows
         // behind an app's native Space when it is foreground.
@@ -312,6 +399,7 @@ final class Controller {
             targets[window.id] = parking; parked.insert(window.id)
         }
         let failed = Set(reconciler.apply(targets, actual: actual))
+        preserveFloatingFrames = false
         if !failed.isDisjoint(with: parked) { pauseForFailure("An application rejected workspace parking"); return }
         if !failed.isEmpty { statusNote = adapter.lastError ?? "\(failed.count) windows have constrained geometry" }
         else { statusNote = "Running" }
@@ -338,6 +426,9 @@ final class Controller {
             "stacking": adapter.stackingDiagnostics(),
             "lastDrag": dragDiagnostics,
             "recentDrags": dragHistory,
+            "sleepWake": ["phase": sleepWake.phase, "sessionInactive": sleepWake.sessionInactive,
+                          "screenLocked": sleepWake.screenLocked, "lockCount": sleepWake.lockCount, "lastResult": sleepWake.lastResult,
+                          "missingDisplays": sleepWake.missingDisplays.sorted(), "missingWindows": sleepWake.missingWindows.sorted()] as [String: Any],
             "windowStates": desktop.windows.values.sorted { $0.id < $1.id }.map {
                 ["id": $0.id, "bundle": $0.bundle, "workspace": $0.workspace,
                  "floating": $0.floating, "minimized": $0.minimized,

@@ -35,6 +35,9 @@ public final class MacWindowAdapter: WindowAdapter {
     public var onChange: (() -> Void)?
     public var parkingDisplays: [String: Display] = [:]
     public var displays: [Display] = []
+    // Wake snapshots can successfully enumerate an empty/partial window list.
+    // Retain AX identities and recovery entries until the controller settles.
+    public var preserveMissingWindows = false
     public private(set) var lastError: String?
     public init(journal: RecoveryJournal) { self.journal = journal }
     public static var trusted: Bool { AXIsProcessTrusted() }
@@ -42,6 +45,7 @@ public final class MacWindowAdapter: WindowAdapter {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
     }
+    public func prepareForWake() { cooldown.removeAll() }
     public func snapshot() -> WindowSnapshot {
         guard Self.trusted else { return WindowSnapshot(windows: [], complete: false) }
         var result: [ObservedWindow] = [], live = Set<String>(), complete = true
@@ -94,7 +98,7 @@ public final class MacWindowAdapter: WindowAdapter {
                 }
             }
         }
-        let stale = Set(entries.filter { !appIDs.contains($0.value.app.processIdentifier) || (complete && !live.contains($0.key)) }.keys)
+        let stale = preserveMissingWindows ? Set<String>() : Set(entries.filter { !appIDs.contains($0.value.app.processIdentifier) || (complete && !live.contains($0.key)) }.keys)
         for id in stale { entries[id] = nil; raiseResults[id] = nil }
         if !stale.isEmpty { try? journal.remove(stale) }
         return WindowSnapshot(windows: result, focused: focused, complete: complete)

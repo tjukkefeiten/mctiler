@@ -38,9 +38,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return controller.queue.sync { controller.execute(arguments) }
             }
             controller.start(displays: MacDisplays.read(), startPaused: CommandLine.arguments.contains("--paused"))
-            timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.controller?.schedule() }
+            timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.controller?.schedule(displays: MacDisplays.read()) }
             NotificationCenter.default.addObserver(self, selector: #selector(displaysChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
-            for name in [NSWorkspace.didWakeNotification, NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification, NSWorkspace.didActivateApplicationNotification] {
+            NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(systemWillSleep), name: NSWorkspace.willSleepNotification, object: nil)
+            NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(systemDidWake), name: NSWorkspace.didWakeNotification, object: nil)
+            NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(sessionDidResignActive), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+            NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(sessionDidBecomeActive), name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+            // Session switching notifications do not cover screen locking on all
+            // macOS versions. These distributed names are unofficial; expose
+            // receipt in status so live validation can verify their delivery.
+            DistributedNotificationCenter.default().addObserver(self, selector: #selector(screenDidLock), name: Notification.Name("com.apple.screenIsLocked"), object: nil, suspensionBehavior: .deliverImmediately)
+            DistributedNotificationCenter.default().addObserver(self, selector: #selector(screenDidUnlock), name: Notification.Name("com.apple.screenIsUnlocked"), object: nil, suspensionBehavior: .deliverImmediately)
+            for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification, NSWorkspace.didActivateApplicationNotification] {
                 NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(workspaceChanged), name: name, object: nil)
             }
             for number in [SIGTERM, SIGINT] {
@@ -85,6 +94,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc func displaysChanged() { controller?.schedule(displays: MacDisplays.read()) }
     @objc func workspaceChanged() { controller?.schedule(displays: MacDisplays.read()) }
+    @objc func systemWillSleep() { controller?.systemWillSleep() }
+    @objc func systemDidWake() { controller?.systemDidWake(displays: MacDisplays.read()) }
+    @objc func sessionDidResignActive() { controller?.sessionDidResignActive() }
+    @objc func sessionDidBecomeActive() { controller?.sessionDidBecomeActive(displays: MacDisplays.read()) }
+    @objc func screenDidLock() { controller?.screenDidLock() }
+    @objc func screenDidUnlock() { controller?.screenDidUnlock(displays: MacDisplays.read()) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if mayTerminate { return .terminateNow }
         run("quit"); return .terminateCancel

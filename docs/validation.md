@@ -180,3 +180,152 @@ cross-display move may retain an interior title-bar grab with a changed horizont
 offset instead of exact translation. Start points are now retained in diagnostics.
 All 62 tests pass, including four-window round trips, occupied-destination insertion,
 changed grab offsets, and same-workspace swaps. Live verification remains pending.
+
+## Sleep/wake workspace preservation — 2026-09-26
+
+Issue #12 investigation found two failure paths: the controller reconciled
+immediately on wake, and a successful but temporarily empty AX enumeration could
+discard both managed membership and adapter identities. Display reconnection also
+selected the first preferred workspace instead of the last visible one. These are
+code-level findings; the reported live failure has not yet been reproduced here.
+
+Added explicit sleep/wake suspension, cancellation of pending drag/focus/stacking
+work, retention of AX entries and recovery records during settling, and fresh
+display polling. Recovery waits for known windows/displays and one second of
+stable display geometry, with a ten-second fallback when at least one display is
+available. Reconnecting displays remember their exact visible workspace, including
+after the fallback and temporary use on a surviving monitor. The first restored
+layout ignores wake-induced AX focus and floating-frame changes. Status includes
+the recovery phase, result, and last missing IDs.
+
+Automated regression suite: 70 tests passed, including eight new cases covering
+complete-but-empty and partial wake snapshots, visible/hidden workspace membership,
+floating geometry, stale AX focus, delayed and reverse-order monitor return,
+timeout/closed-window cleanup, zero displays, repeat sleep/wake notifications,
+geometry settling, and explicit reassignment overriding remembered selections.
+
+The installed toolchain is now Apple Swift 6.4. The initial default-backend test
+run passed; an incremental rerun failed to load `TestingMacros`. The final suite
+passed with `bash scripts/test.sh --build-system native`. The release app and CLI
+were built, ad-hoc signed, and passed strict signature verification; the example
+config and app plist also validate. Packaging required removing FinderInfo
+attributes from the existing generated app bundle and restoring owner-executable
+permissions on its executable and the CLI. The packaged build has not been
+launched for this validation.
+
+Live acceptance remains pending:
+
+1. Put windows on both displays plus a hidden workspace; select non-default
+   visible workspaces (for example, 7 and 9). Capture `dist/mctiler status`.
+2. Sleep and wake the Mac. After `sleepWake.phase` becomes `awake`, compare
+   window IDs/membership, visible workspaces, and actual placement with the
+   baseline. Check floating geometry and a manual layout as well.
+3. Repeat with the external display reconnecting within ten seconds, then after
+   more than ten seconds. While disconnected, open its workspace on the built-in
+   display and confirm it returns to the external display on reconnection.
+4. Repeat with a paused session, and with an app closing during sleep. Confirm
+   management stays paused in the former case and missing windows are cleaned up
+   after the bounded wait in the latter.
+
+AX identity replacement by an application and windows absent beyond the settling
+timeout still need live investigation. Issue #12 remains open pending validation.
+
+## Sleep/wake and resizing follow-up — 2026-10-06
+
+The packaged app passed strict signature verification and launched paused with
+sleep/wake diagnostics available. After the external display connected, status
+reported both displays and a restored wake while still paused. No windows had
+been ingested in that session, so this does not establish membership preservation.
+Resuming captured three windows, all initially in workspace 1. An application
+rejected a target frame; actual geometry differs from the requested tiling.
+The active multi-workspace sleep/wake acceptance test is pending setup.
+
+Issue #14 investigation: native tiled edge resizing has no completion path that
+updates split weights. Size-changing same-display drags are rejected as moves,
+then the controller reapplies the existing layout. This explains resize snap-back
+at the code level; live edge resizing still needs confirmation.
+
+A new regression checks all four keyboard resize directions on an automatic
+three-window layout. The stacked pair retains its container, vertical axis,
+children, and relative placement. All 71 tests pass. The reported keyboard
+flattening was not reproduced in this model case; no production resizing change
+has been made.
+
+### Lock/unlock reproduction
+
+The user reported that simply locking and unlocking rearranged all windows.
+Before/after status confirms Slack moved from workspace 1 to workspace 2 and
+all four tracked window UUIDs changed, while the two display assignments stayed
+unchanged. The current recovery guard listened only for system sleep/wake.
+
+Added NSWorkspace session deactivation/activation observers and routed them
+through recovery suspension. Overlapping system sleep and inactive sessions must
+both end before enumeration/reconciliation resumes. Status exposes sessionInactive.
+Two new regressions cover lock/unlock without sleep, duplicate notifications,
+baseline retention, and both unlock/wake orders. All 73 tests pass. The connection
+between session notifications and this live failure still requires verification
+with the updated app; UUID replacement beyond settling remains unresolved.
+
+Release build succeeded. Signing initially rejected FinderInfo attributes in the
+generated bundle; removing that attribute and re-signing passed strict verification.
+The old process quit successfully and the updated app launched paused, exposing
+sessionInactive in status. Its new signature requires Accessibility authorization
+again; active lock/unlock validation is pending that user-controlled step.
+
+### Session notification validation failed
+
+After renewing Accessibility and resuming, a saved seven-window baseline was
+compared with the user's lock/unlock attempt. All seven UUIDs were replaced;
+lastResult stayed `none`, so the NSWorkspace session hooks did not enter recovery.
+No IDs survived for a frame comparison. All windows were already in workspace 1
+at the baseline, so this run cannot validate multi-workspace preservation.
+
+Added separate screen-lock suspension driven by the unofficial distributed
+`com.apple.screenIsLocked` / `com.apple.screenIsUnlocked` notifications (also used
+by macadmins/Nudge). Session and sleep guards remain independent, so neither a
+session activation nor wake can prematurely end screen-lock suspension. Status
+includes screenLocked and lockCount to verify delivery in the next live run.
+All 75 tests pass, including screen locking without a session switch or sleep and
+overlap of all three suspension reasons. Live validation remains pending.
+
+### Resume after rebuilding loses earlier workspace assignments
+
+The user observed Slack jump from workspace 2 to workspace 1 on resuming the
+restarted build. Desktop workspace membership is held in memory, while the
+recovery journal restores frames rather than workspace assignments. In the new
+process, newly discovered windows without an explicit workspace rule are added
+to the currently focused workspace. This explains the resume-time reassignment
+after this restart; it is separate from lock/unlock identity loss. The latest
+lock-test baseline was captured after resume and cannot establish preservation of
+the user's pre-restart arrangement. Persistence across app restarts is unresolved.
+
+### Screen-lock detection passed one live cycle
+
+After enabling Accessibility for the corrected build and resuming, saved status
+contained five managed windows. The user's lock/unlock cycle incremented lockCount
+from 0 to 1 and completed recovery with lastResult `restored`. All five UUIDs,
+workspace assignments, visible workspace/display mappings, and observed window
+frames matched the baseline exactly. Status remained Running, with no missing
+windows or displays. This validates detection and identity/geometry retention for
+one cycle. All five baseline windows were in workspace 1; preservation across
+multiple populated McTiler workspaces, hidden membership, delayed display return,
+and system sleep still need live validation. Issue #12 remains open.
+
+### Second lock cycle with two populated workspaces
+
+The user moved Slack to workspace 2 before a fresh baseline was saved; four other
+tracked windows remained in workspace 1. The subsequent lock/unlock incremented
+lockCount from 1 to 2 and completed with lastResult `restored`. All five IDs,
+memberships, observed frames, and display/workspace assignments were unchanged.
+Slack retained workspace 2 and status remained Running. This provides live
+coverage of two populated visible workspaces. Hidden McTiler workspace membership,
+actual sleep/wake, and delayed monitor reconnection remain pending.
+
+### Third lock cycle after another transfer
+
+The user also moved Proton Pass to workspace 2, alongside Slack, leaving Ghostty,
+Dia, and AnyConnect in workspace 1. A fresh baseline and subsequent lock/unlock
+comparison preserved all five UUIDs, memberships, observed frames, and visible
+display/workspace assignments. lockCount advanced from 2 to 3; recovery reported
+`restored`, no missing windows/displays, and status Running. Three successive live
+lock cycles now pass, including transfers between the two populated workspaces.

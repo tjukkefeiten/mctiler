@@ -111,6 +111,7 @@ public final class Desktop {
     public var workspaces: [String: Workspace] = [:]
     public var displays: [Display] = []
     public var visible: [String: String] = [:] // display ID -> workspace
+    private var rememberedVisible: [String: String] = [:]
     public var focusedDisplay: String?
     public var innerGap = 12.0
     public var outerGap = 8.0
@@ -118,19 +119,27 @@ public final class Desktop {
     public var current: Workspace? { focusedDisplay.flatMap { visible[$0] }.flatMap { workspaces[$0] } }
     public var focusedWindow: String? { current?.focused }
     public func updateDisplays(_ new: [Display]) {
+        // Several workspaces can prefer the same display. Remember its actual
+        // selection, not the first preferred workspace in numeric order. Do not
+        // replace that memory with a disconnected display's borrowed workspace.
+        for (id, name) in visible where workspaces[name]?.preferredDisplay == id || workspaces[name]?.preferredDisplay == nil {
+            rememberedVisible[id] = name
+        }
         let newIDs = Set(new.map(\.id))
         visible = visible.filter { newIDs.contains($0.key) }
         displays = new
         for display in new where visible[display.id] == nil {
             let used = Set(visible.values)
             let names = workspaces.keys.sorted()
-            let name = names.first { workspaces[$0]?.preferredDisplay == display.id }
+            let remembered = rememberedVisible[display.id].flatMap { workspaces[$0]?.preferredDisplay == display.id ? $0 : nil }
+            let name = remembered ?? names.first { workspaces[$0]?.preferredDisplay == display.id }
                 ?? names.first { workspaces[$0]?.preferredDisplay == nil && !used.contains($0) }
                 ?? names.first { !used.contains($0) }
             if let name {
                 // Reclaim a workspace temporarily shown on a surviving screen.
                 if let owner = visible.first(where: { $0.value == name })?.key, owner != display.id {
-                    let replacement = names.first { !used.contains($0) && workspaces[$0]?.preferredDisplay == owner }
+                    let previous = rememberedVisible[owner].flatMap { !used.contains($0) && workspaces[$0]?.preferredDisplay == owner ? $0 : nil }
+                    let replacement = previous ?? names.first { !used.contains($0) && workspaces[$0]?.preferredDisplay == owner }
                         ?? names.first { !used.contains($0) }
                     visible[owner] = replacement
                 }

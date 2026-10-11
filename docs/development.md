@@ -15,6 +15,9 @@ bash scripts/build-app.sh
 
 The test script uses Swift Testing and supplies its framework search path when
 building with Command Line Tools. Full Xcode is not required.
+With Apple Swift 6.4, an incremental build using the default backend can fail with
+`plugin for module 'TestingMacros' not found`. The verified workaround is
+`bash scripts/test.sh --build-system native` (that backend is deprecated upstream).
 
 The main thread owns UI and hotkeys. A serial worker handles window state and
 Accessibility calls; notifications are coalesced and a one-second poll repairs
